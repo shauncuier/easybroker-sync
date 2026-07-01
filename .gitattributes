@@ -1,0 +1,13 @@
+# Exclude dev-only files from GitHub's auto-generated source archives
+# and from the plugin release zip built by the workflow.
+/.git                   export-ignore
+/.github                export-ignore
+/.gitattributes         export-ignore
+/.gitignore             export-ignore
+/tests                  export-ignore
+/phpcs.xml.dist         export-ignore
+/phpunit.xml.dist       export-ignore
+/composer.json          export-ignore
+/composer.lock          export-ignore
+/vendor                 export-ignore
+/QA-CHECKLIST.md        export-ignore

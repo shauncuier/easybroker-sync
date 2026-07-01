@@ -1,0 +1,58 @@
+name: Release Plugin
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Build plugin zip
+        run: |
+          PLUGIN_SLUG="easybroker-sync"
+          BUILD_DIR="/tmp/${PLUGIN_SLUG}"
+
+          # Create a clean directory with only the runtime files
+          mkdir -p "${BUILD_DIR}"
+
+          # Copy runtime files (exclude dev-only items)
+          cp -r assets/        "${BUILD_DIR}/assets/"
+          cp -r includes/      "${BUILD_DIR}/includes/"
+          cp -r templates/     "${BUILD_DIR}/templates/"
+          cp    easybroker-sync.php "${BUILD_DIR}/"
+          cp    index.php      "${BUILD_DIR}/"
+          cp    uninstall.php   "${BUILD_DIR}/"
+          cp    readme.txt     "${BUILD_DIR}/"
+
+          # Create the zip from the parent directory so the zip root is the plugin folder
+          cd /tmp
+          zip -r "${GITHUB_WORKSPACE}/${PLUGIN_SLUG}.zip" "${PLUGIN_SLUG}/"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.version.outputs.VERSION }}
+          body: |
+            ## EasyBroker Sync ${{ steps.version.outputs.VERSION }}
+
+            ### Installation
+            1. Download **easybroker-sync.zip** below.
+            2. In WordPress, go to **Plugins → Add New → Upload Plugin**.
+            3. Choose the downloaded `.zip` file and click **Install Now**.
+            4. Activate the plugin and configure at **Properties → EasyBroker Sync**.
+          files: easybroker-sync.zip
+          generate_release_notes: true
