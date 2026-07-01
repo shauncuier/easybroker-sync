@@ -1,0 +1,117 @@
+/* global jQuery, EBS_Admin */
+( function ( $ ) {
+	'use strict';
+
+	function post( action, $result, $btn ) {
+		var original = $btn ? $btn.text() : '';
+		if ( $btn ) {
+			$btn.prop( 'disabled', true );
+		}
+		$result.removeClass( 'is-ok is-error' ).text( EBS_Admin.strings.working );
+
+		$.post( EBS_Admin.ajaxUrl, {
+			action: action,
+			nonce: EBS_Admin.nonce
+		} )
+			.done( function ( res ) {
+				if ( res && res.success ) {
+					$result.addClass( 'is-ok' ).text( res.data.message || EBS_Admin.strings.done );
+				} else {
+					var msg = res && res.data && res.data.message ? res.data.message : EBS_Admin.strings.failed;
+					$result.addClass( 'is-error' ).text( msg );
+				}
+			} )
+			.fail( function () {
+				$result.addClass( 'is-error' ).text( EBS_Admin.strings.failed );
+			} )
+			.always( function () {
+				if ( $btn ) {
+					$btn.prop( 'disabled', false ).text( original );
+				}
+			} );
+	}
+
+	$( function () {
+		$( '#ebs-test-connection' ).on( 'click', function () {
+			post( 'ebs_test_connection', $( '#ebs-test-result' ), $( this ) );
+		} );
+
+		$( '.ebs-action' ).on( 'click', function () {
+			var action = $( this ).data( 'action' );
+			post( action, $( '#ebs-action-result' ), $( this ) );
+		} );
+
+		// Manual per-post push (editor).
+		$( '#ebs-push-now' ).on( 'click', function () {
+			var $btn = $( this );
+			var $res = $( '#ebs-push-now-result' );
+			var original = $btn.text();
+			$btn.prop( 'disabled', true );
+			$res.removeClass( 'is-ok is-error' ).text( EBS_Admin.strings.working );
+			$.post( EBS_Admin.ajaxUrl, {
+				action: 'ebs_push_one',
+				nonce: EBS_Admin.nonce,
+				post_id: $btn.data( 'post-id' )
+			} )
+				.done( function ( r ) {
+					if ( r && r.success ) {
+						$res.addClass( 'is-ok' ).text( r.data.message || EBS_Admin.strings.done );
+					} else {
+						$res.addClass( 'is-error' ).text( ( r && r.data && r.data.message ) || EBS_Admin.strings.failed );
+					}
+				} )
+				.fail( function () {
+					$res.addClass( 'is-error' ).text( EBS_Admin.strings.failed );
+				} )
+				.always( function () {
+					$btn.prop( 'disabled', false ).text( original );
+				} );
+		} );
+
+		// Location picker (property editor).
+		function runLocationSearch() {
+			var q = $.trim( $( '#ebs-loc-query' ).val() || '' );
+			var $status = $( '#ebs-loc-status' );
+			var $results = $( '#ebs-loc-results' ).empty();
+			if ( ! q ) {
+				return;
+			}
+			$status.removeClass( 'is-ok is-error' ).text( EBS_Admin.strings.working );
+			$.post( EBS_Admin.ajaxUrl, {
+				action: 'ebs_location_search',
+				nonce: EBS_Admin.nonce,
+				query: q
+			} )
+				.done( function ( res ) {
+					if ( res && res.success && res.data.locations && res.data.locations.length ) {
+						$status.removeClass( 'is-error' ).addClass( 'is-ok' ).text( res.data.locations.length + ' found' );
+						$.each( res.data.locations, function ( i, name ) {
+							$( '<li/>' )
+								.append( $( '<a href="#" class="ebs-loc-pick"/>' ).text( name ) )
+								.appendTo( $results );
+						} );
+					} else {
+						var msg = res && res.data && res.data.message ? res.data.message : 'No locations found.';
+						$status.removeClass( 'is-ok' ).addClass( 'is-error' ).text( msg );
+					}
+				} )
+				.fail( function () {
+					$status.addClass( 'is-error' ).text( EBS_Admin.strings.failed );
+				} );
+		}
+
+		$( '#ebs-loc-search' ).on( 'click', runLocationSearch );
+		$( '#ebs-loc-query' ).on( 'keydown', function ( e ) {
+			if ( 13 === e.which ) {
+				e.preventDefault();
+				runLocationSearch();
+			}
+		} );
+		$( document ).on( 'click', '.ebs-loc-pick', function ( e ) {
+			e.preventDefault();
+			$( '#ebs_location_name' ).val( $( this ).text() );
+			$( '#ebs-loc-results' ).empty();
+			$( '#ebs-loc-status' ).removeClass( 'is-error' ).addClass( 'is-ok' ).text( EBS_Admin.strings.done );
+		} );
+	} );
+} )( jQuery );

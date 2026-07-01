@@ -1,0 +1,68 @@
+.ebs-wrap .ebs-inline-result {
+	margin-left: 8px;
+	font-weight: 600;
+}
+.ebs-wrap .ebs-inline-result.is-ok {
+	color: #1a7f37;
+}
+.ebs-wrap .ebs-inline-result.is-error {
+	color: #b32d2e;
+}
+
+.ebs-meta .ebs-status {
+	padding: 6px 10px;
+	border-left: 4px solid #ccc;
+	background: #f6f7f7;
+}
+.ebs-meta .ebs-status-synced {
+	border-color: #1a7f37;
+}
+.ebs-meta .ebs-status-pending {
+	border-color: #bd8600;
+}
+.ebs-meta .ebs-status-error {
+	border-color: #b32d2e;
+}
+.ebs-meta .ebs-status-msg {
+	color: #b32d2e;
+}
+
+.ebs-log .ebs-badge {
+	display: inline-block;
+	padding: 1px 8px;
+	border-radius: 10px;
+	font-size: 11px;
+	text-transform: uppercase;
+	color: #fff;
+	background: #777;
+}
+.ebs-log .ebs-badge-success {
+	background: #1a7f37;
+}
+.ebs-log .ebs-badge-error {
+	background: #b32d2e;
+}
+.ebs-log .ebs-badge-info {
+	background: #2271b1;
+}
+
+.ebs-loc-lookup {
+	margin: 8px 0 4px;
+	padding: 12px;
+	background: #f6f7f7;
+	border: 1px solid #e0e0e0;
+	border-radius: 4px;
+}
+.ebs-loc-results {
+	margin: 8px 0 0;
+	max-height: 220px;
+	overflow-y: auto;
+}
+.ebs-loc-results li {
+	margin: 0;
+	padding: 2px 0;
+	border-bottom: 1px solid #eee;
+}
+.ebs-loc-results a.ebs-loc-pick {
+	text-decoration: none;
+}

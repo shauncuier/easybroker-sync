@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<ruleset name="EasyBroker Sync">
+	<description>Coding standards for the EasyBroker Sync plugin.</description>
+
+	<!-- What to scan. -->
+	<file>.</file>
+	<exclude-pattern>/vendor/*</exclude-pattern>
+	<exclude-pattern>/node_modules/*</exclude-pattern>
+	<exclude-pattern>/tests/*</exclude-pattern>
+	<exclude-pattern>*/index.php</exclude-pattern>
+
+	<arg name="extensions" value="php"/>
+	<arg name="colors"/>
+	<arg value="sp"/><!-- show sniff codes and progress -->
+
+	<!-- Rulesets. -->
+	<rule ref="WordPress-Extra"/>
+	<rule ref="WordPress-Docs"/>
+
+	<!-- PHP cross-version compatibility. -->
+	<config name="testVersion" value="7.4-"/>
+	<rule ref="PHPCompatibilityWP"/>
+
+	<!-- Project conventions. -->
+	<config name="minimum_wp_version" value="6.0"/>
+
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array">
+				<element value="easybroker-sync"/>
+			</property>
+		</properties>
+	</rule>
+
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<properties>
+			<property name="prefixes" type="array">
+				<element value="EBS_"/>
+				<element value="ebs_"/>
+				<element value="ebs"/>
+			</property>
+		</properties>
+	</rule>
+</ruleset>
