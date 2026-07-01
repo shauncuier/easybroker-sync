@@ -191,8 +191,23 @@ class EBS_Api_Client {
 			$result         = $this->get( $path, $query );
 
 			if ( is_wp_error( $result ) ) {
-				// Return partial results if we already have some; otherwise the error.
-				return empty( $items ) ? $result : $items;
+				if ( empty( $items ) ) {
+					return $result;
+				}
+				// Return partial results, but record that the list is incomplete so
+				// callers/admins never mistake it for the full collection.
+				EBS_Logger::log(
+					'system',
+					'error',
+					sprintf(
+						/* translators: 1: API path, 2: page number, 3: error message. */
+						__( 'Pagination of "%1$s" aborted on page %2$d (%3$s) — results are partial.', 'easybroker-sync' ),
+						$path,
+						$page,
+						$result->get_error_message()
+					)
+				);
+				return $items;
 			}
 
 			$batch = $this->pluck_collection( $result, $collection );

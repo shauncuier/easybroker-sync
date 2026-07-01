@@ -168,7 +168,10 @@ class EBS_Meta {
 			if ( ! isset( $_POST[ $input ] ) ) {
 				continue;
 			}
-			$raw   = wp_unslash( $_POST[ $input ] );
+			$raw = wp_unslash( $_POST[ $input ] );
+			if ( ! is_scalar( $raw ) ) {
+				continue; // Reject array/object input (e.g. crafted ebs_price[]=x).
+			}
 			$value = is_callable( $sanitizer ) ? call_user_func( $sanitizer, $raw ) : sanitize_text_field( $raw );
 			EBS_Field_Map::set( $post_id, $key, $value );
 		}

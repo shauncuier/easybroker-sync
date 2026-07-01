@@ -16,6 +16,8 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 delete_option( 'ebs_settings' );
 delete_option( 'ebs_sync_log' );
 delete_option( 'ebs_collaboration_agencies' );
+delete_option( 'ebs_lock_pull' );
+delete_option( 'ebs_lock_push' );
 delete_transient( 'ebs_property_types' );
 delete_transient( 'ebs_listing_statuses' );
 

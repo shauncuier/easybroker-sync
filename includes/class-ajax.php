@@ -119,6 +119,11 @@ class EBS_Ajax {
 		$this->guard();
 		$push    = new EBS_Push();
 		$summary = $push->push_pending();
+
+		if ( ! empty( $summary['locked'] ) ) {
+			wp_send_json_error( array( 'message' => __( 'A push is already running — try again in a moment.', 'easybroker-sync' ) ) );
+		}
+
 		wp_send_json_success(
 			array(
 				/* translators: 1: success count, 2: failure count. */
@@ -136,7 +141,10 @@ class EBS_Ajax {
 		$summary = $pull->run();
 
 		if ( isset( $summary['error'] ) ) {
-			wp_send_json_error( array( 'message' => __( 'Import failed — check the API key and log.', 'easybroker-sync' ) ) );
+			$message = 'locked' === $summary['error']
+				? __( 'A sync is already running — try again in a moment.', 'easybroker-sync' )
+				: __( 'Import failed — check the API key and log.', 'easybroker-sync' );
+			wp_send_json_error( array( 'message' => $message ) );
 		}
 
 		$agencies = isset( $summary['agencies'] ) ? (int) $summary['agencies'] : 0;

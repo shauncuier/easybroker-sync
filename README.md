@@ -47,6 +47,18 @@ Cross-post WordPress property listings to [EasyBroker](https://www.easybroker.co
 
 ## 📝 Changelog
 
+### 0.3.0
+- Added: concurrency locks — pull and push never overlap (fixes cron vs. manual button race)
+- Added: push time budget so push never hits `max_execution_time`
+- Fixed: PHP 8 safety — `sanitize_amount()` and numeric attributes no longer fatal on malformed values
+- Added: ISO-4217 currency sanitizer (3 uppercase letters); used in admin settings and field map
+- Security: meta-box save rejects non-scalar POST values; API import skips non-scalar values
+- Fixed: SSRF check handles IPv6 bracket notation correctly
+- Improved: partial pagination errors are logged; AJAX shows "already running" message
+- Added: `Update URI: false` header to prevent accidental wordpress.org updates
+- Cleanup: uninstall removes lock options
+- Dev: new tests for `sanitize_amount`, `sanitize_currency`, and non-numeric legacy meta
+
 ### 0.2.0
 - Security & hardening pass
 - Fixed: images no longer re-sent on update (no more duplicates)

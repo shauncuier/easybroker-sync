@@ -108,6 +108,42 @@ final class EBS_Plugin {
 	}
 
 	/**
+	 * Acquire a named mutex so pull/push runs never overlap (cron vs. manual
+	 * button, or a cron run outliving its interval). Backed by add_option(),
+	 * which is atomic at the DB level (INSERT fails if the row exists).
+	 *
+	 * @param string $name Lock name (e.g. 'pull', 'push').
+	 * @param int    $ttl  Seconds after which a lock is considered stale
+	 *                     (holder crashed) and may be stolen.
+	 * @return bool Whether the lock was acquired.
+	 */
+	public static function acquire_lock( $name, $ttl = 900 ) {
+		$key = 'ebs_lock_' . $name;
+		$now = time();
+
+		if ( add_option( $key, $now, '', false ) ) {
+			return true;
+		}
+
+		$held = (int) get_option( $key );
+		if ( $held && ( $now - $held ) > $ttl ) {
+			update_option( $key, $now, false );
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Release a named mutex.
+	 *
+	 * @param string $name Lock name.
+	 */
+	public static function release_lock( $name ) {
+		delete_option( 'ebs_lock_' . $name );
+	}
+
+	/**
 	 * Load the plugin single template for eb_property unless the theme provides one.
 	 *
 	 * @param string $template Resolved template path.

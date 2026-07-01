@@ -82,6 +82,31 @@ class Test_EBS_Field_Map extends WP_UnitTestCase {
 		$this->assertSame( array(), $ok );
 	}
 
+	public function test_sanitize_amount_rejects_malformed_numbers() {
+		$this->assertSame( '4500000', EBS_Field_Map::sanitize_amount( '$4,500,000' ) );
+		$this->assertSame( '2.5', EBS_Field_Map::sanitize_amount( '2.5' ) );
+		// These previously reached "0 + $value" and fataled on PHP 8.
+		$this->assertSame( '', EBS_Field_Map::sanitize_amount( '.' ) );
+		$this->assertSame( '', EBS_Field_Map::sanitize_amount( '1.2.3' ) );
+		$this->assertSame( '', EBS_Field_Map::sanitize_amount( 'n.a.' ) );
+		$this->assertSame( '', EBS_Field_Map::sanitize_amount( array( 'x' ) ) );
+	}
+
+	public function test_sanitize_currency_enforces_iso_shape() {
+		$this->assertSame( 'MXN', EBS_Field_Map::sanitize_currency( 'mxn' ) );
+		$this->assertSame( 'USD', EBS_Field_Map::sanitize_currency( ' USD ' ) );
+		$this->assertSame( '', EBS_Field_Map::sanitize_currency( 'pesos' ) );
+		$this->assertSame( '', EBS_Field_Map::sanitize_currency( '<b>MX</b>' ) );
+		$this->assertSame( '', EBS_Field_Map::sanitize_currency( array( 'MXN' ) ) );
+	}
+
+	public function test_payload_skips_non_numeric_legacy_meta() {
+		$post_id = $this->make_property();
+		update_post_meta( $post_id, '_ebs_lot_size', 'garbage' ); // Pre-0.2 unsanitized meta.
+		$payload = EBS_Field_Map::to_easybroker( $post_id );
+		$this->assertArrayNotHasKey( 'lot_size', $payload );
+	}
+
 	public function test_from_easybroker_sanitizes_incoming_values() {
 		$post_id = self::factory()->post->create( array( 'post_type' => 'eb_property' ) );
 		EBS_Field_Map::from_easybroker(

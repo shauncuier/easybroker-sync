@@ -102,10 +102,20 @@ class EBS_Push {
 	/**
 	 * Push all posts currently in pending/error status.
 	 *
-	 * @param int $limit Max posts to process this run.
+	 * @param int $limit       Max posts to process this run.
+	 * @param int $time_budget Seconds to spend before stopping early, so an
+	 *                         admin-ajax request never hits max_execution_time.
+	 *                         Unpushed posts stay 'pending' for the next run.
 	 * @return array Summary counts.
 	 */
-	public function push_pending( $limit = 25 ) {
+	public function push_pending( $limit = 25, $time_budget = 20 ) {
+		if ( ! EBS_Plugin::acquire_lock( 'push' ) ) {
+			return array(
+				'ok'     => 0,
+				'fail'   => 0,
+				'locked' => true,
+			);
+		}
 		$query = new WP_Query(
 			array(
 				'post_type'      => EBS_Cpt::POST_TYPE,
@@ -149,16 +159,25 @@ class EBS_Push {
 			)
 		);
 
-		$ok    = 0;
-		$fail  = 0;
-		foreach ( $query->posts as $post_id ) {
-			$result = $this->push_post( $post_id );
-			if ( is_wp_error( $result ) ) {
-				$fail++;
-			} else {
-				$ok++;
+		$ok       = 0;
+		$fail     = 0;
+		$deadline = time() + max( 5, (int) $time_budget );
+
+		try {
+			foreach ( $query->posts as $post_id ) {
+				if ( time() >= $deadline ) {
+					break; // Out of time — remaining posts stay pending for the next run.
+				}
+				$result = $this->push_post( $post_id );
+				if ( is_wp_error( $result ) ) {
+					$fail++;
+				} else {
+					$ok++;
+				}
+				usleep( 60000 ); // Throttle (~16/sec worst case).
 			}
-			usleep( 60000 ); // Throttle (~16/sec worst case).
+		} finally {
+			EBS_Plugin::release_lock( 'push' );
 		}
 
 		return array(

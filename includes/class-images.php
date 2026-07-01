@@ -156,8 +156,19 @@ class EBS_Images {
 			return false;
 		}
 
-		// Reject literal private / loopback / link-local IP hosts.
-		$ip = filter_var( $host, FILTER_VALIDATE_IP ) ? $host : gethostbyname( $host );
+		// Reject literal private / loopback / link-local IP hosts. IPv6 literals
+		// arrive bracketed from wp_parse_url ("[::1]") — unwrap before validating.
+		$literal = trim( $host, '[]' );
+		if ( filter_var( $literal, FILTER_VALIDATE_IP ) ) {
+			$ip = $literal;
+		} elseif ( $literal !== $host ) {
+			return false; // Bracketed host that is not a valid IP literal.
+		} else {
+			// Note: resolving here and again at fetch time leaves a DNS-rebinding
+			// window; the actual download goes through wp_safe_remote_get(), which
+			// re-validates, so this check is defense-in-depth only.
+			$ip = gethostbyname( $host );
+		}
 		if ( filter_var( $ip, FILTER_VALIDATE_IP ) && ! filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) ) {
 			return false;
 		}

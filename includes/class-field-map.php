@@ -28,7 +28,7 @@ class EBS_Field_Map {
 			'eb_public_id'      => 'sanitize_text_field',
 			'operation_type'    => 'sanitize_text_field', // sale | rental.
 			'price'             => array( __CLASS__, 'sanitize_amount' ),
-			'currency'          => 'sanitize_text_field',
+			'currency'          => array( __CLASS__, 'sanitize_currency' ),
 			'property_type'     => 'sanitize_text_field',
 			'bedrooms'          => 'absint',
 			'bathrooms'         => array( __CLASS__, 'sanitize_half' ),
@@ -129,10 +129,11 @@ class EBS_Field_Map {
 			'location'      => self::location_payload( $post_id ),
 		);
 
-		// Numeric attributes — only include when set.
+		// Numeric attributes — only include when set and numeric (legacy meta may
+		// predate the stricter sanitizers; arithmetic on garbage fatals in PHP 8).
 		foreach ( array( 'bedrooms', 'bathrooms', 'half_bathrooms', 'parking_spaces', 'construction_size', 'lot_size' ) as $attr ) {
 			$val = self::get( $post_id, $attr, '' );
-			if ( '' !== $val ) {
+			if ( '' !== $val && is_numeric( $val ) ) {
 				$payload[ $attr ] = 0 + $val;
 			}
 		}
@@ -310,13 +311,13 @@ class EBS_Field_Map {
 
 		$sanitizers = self::fields();
 		foreach ( $map as $key => $value ) {
-			if ( null === $value || '' === $value ) {
+			if ( null === $value || '' === $value || ! is_scalar( $value ) ) {
 				continue;
 			}
 			// Defense-in-depth: sanitize API-sourced data on the way in.
 			if ( isset( $sanitizers[ $key ] ) && is_callable( $sanitizers[ $key ] ) ) {
 				$value = call_user_func( $sanitizers[ $key ], $value );
-			} elseif ( is_scalar( $value ) ) {
+			} else {
 				$value = sanitize_text_field( (string) $value );
 			}
 			self::set( $post_id, $key, $value );
@@ -364,8 +365,16 @@ class EBS_Field_Map {
 	 * @return string
 	 */
 	public static function sanitize_amount( $value ) {
+		if ( ! is_scalar( $value ) ) {
+			return '';
+		}
 		$value = preg_replace( '/[^0-9.]/', '', (string) $value );
-		return '' === $value ? '' : (string) ( 0 + $value );
+		// is_numeric guard: stripped input like "." or "1.2.3" is not a valid
+		// number and would fatal on arithmetic in PHP 8.
+		if ( '' === $value || ! is_numeric( $value ) ) {
+			return '';
+		}
+		return (string) ( 0 + $value );
 	}
 
 	/**
@@ -376,6 +385,20 @@ class EBS_Field_Map {
 	 */
 	public static function sanitize_half( $value ) {
 		return self::sanitize_amount( $value );
+	}
+
+	/**
+	 * Sanitize a currency code to ISO-4217 shape (3 uppercase letters) or ''.
+	 *
+	 * @param mixed $value Raw.
+	 * @return string
+	 */
+	public static function sanitize_currency( $value ) {
+		if ( ! is_scalar( $value ) ) {
+			return '';
+		}
+		$value = strtoupper( trim( (string) $value ) );
+		return preg_match( '/^[A-Z]{3}$/', $value ) ? $value : '';
 	}
 
 	/**

@@ -103,7 +103,7 @@ class EBS_Scheduler {
 		$pull->run();
 
 		$push    = new EBS_Push();
-		$push->push_pending();
+		$push->push_pending( 25, 45 ); // Cron gets a longer time budget than admin-ajax.
 
 		EBS_Logger::log( 'system', 'info', __( 'Scheduled sync finished.', 'easybroker-sync' ) );
 	}

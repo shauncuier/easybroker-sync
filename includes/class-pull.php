@@ -37,12 +37,23 @@ class EBS_Pull {
 			return array( 'error' => 'no_key' );
 		}
 
-		$summary = array(
-			'agencies' => $this->sync_agencies( $client ),
-		);
+		// Never allow two pulls to run concurrently (cron vs. manual button) —
+		// the exists-check in pull_own() would race and create duplicate posts.
+		if ( ! EBS_Plugin::acquire_lock( 'pull' ) ) {
+			EBS_Logger::log( 'pull', 'info', __( 'Pull skipped — another sync is already running.', 'easybroker-sync' ) );
+			return array( 'error' => 'locked' );
+		}
 
-		if ( 'no' !== EBS_Plugin::get_setting( 'pull_own', 'yes' ) ) {
-			$summary['own'] = $this->pull_own( $client );
+		try {
+			$summary = array(
+				'agencies' => $this->sync_agencies( $client ),
+			);
+
+			if ( 'no' !== EBS_Plugin::get_setting( 'pull_own', 'yes' ) ) {
+				$summary['own'] = $this->pull_own( $client );
+			}
+		} finally {
+			EBS_Plugin::release_lock( 'pull' );
 		}
 
 		return $summary;

@@ -104,7 +104,8 @@ class EBS_Admin {
 			}
 		}
 
-		$out['currency']      = isset( $input['currency'] ) ? sanitize_text_field( $input['currency'] ) : 'MXN';
+		$currency             = isset( $input['currency'] ) ? EBS_Field_Map::sanitize_currency( $input['currency'] ) : '';
+		$out['currency']      = '' !== $currency ? $currency : 'MXN';
 		$out['agent_email']   = isset( $input['agent_email'] ) ? sanitize_email( $input['agent_email'] ) : '';
 		$out['image_mode']    = ( isset( $input['image_mode'] ) && 'hotlink' === $input['image_mode'] ) ? 'hotlink' : 'import';
 		$out['pull_own']      = ( isset( $input['pull_own'] ) && 'yes' === $input['pull_own'] ) ? 'yes' : 'no';

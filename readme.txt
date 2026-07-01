@@ -4,7 +4,7 @@ Tags: real estate, easybroker, listings, sync, mexico
 Requires at least: 6.0
 Tested up to: 6.5
 Requires PHP: 7.4
-Stable tag: 0.2.0
+Stable tag: 0.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,19 @@ the property already has an EasyBroker ID it is updated (PATCH); otherwise it is
 created (POST) and the returned ID is stored.
 
 == Changelog ==
+
+= 0.3.0 =
+* Added: concurrency locks — pull and push never overlap (cron vs. manual button race condition fixed).
+* Added: push time budget — push_pending() stops before hitting max_execution_time (cron 45s, AJAX 20s).
+* Fixed: PHP 8 safety — sanitize_amount() and numeric attribute mapping no longer fatal on malformed values.
+* Added: ISO-4217 currency sanitizer (3 uppercase letters or empty); used in admin settings and field map.
+* Security: meta-box save rejects non-scalar POST values; from_easybroker() skips non-scalar API values.
+* Fixed: SSRF check now handles IPv6 bracket notation correctly.
+* Improved: partial pagination errors are logged with page number and path so admins know results are incomplete.
+* Improved: AJAX sync/push returns a clear "already running" message instead of a generic failure.
+* Added: Update URI header set to `false` to prevent accidental updates from wordpress.org.
+* Cleanup: uninstall.php removes lock options (ebs_lock_pull, ebs_lock_push).
+* Dev: new tests for sanitize_amount, sanitize_currency, and non-numeric legacy meta handling.
 
 = 0.2.0 =
 * Security & hardening pass.
