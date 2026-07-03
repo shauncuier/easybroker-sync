@@ -28,9 +28,10 @@ class EBS_Push {
 	 */
 	public function push_post( $post_id ) {
 		$post = get_post( $post_id );
-		if ( ! $post || EBS_Cpt::POST_TYPE !== $post->post_type ) {
+		if ( ! $post || ! in_array( $post->post_type, EBS_Houzez::supported_post_types(), true ) ) {
 			return new WP_Error( 'ebs_bad_post', __( 'Not a property post.', 'easybroker-sync' ) );
 		}
+		$is_houzez = EBS_Houzez::POST_TYPE === $post->post_type;
 
 		// Never push collaboration listings.
 		if ( EBS_Field_Map::get( $post_id, 'is_collaboration', false ) ) {
@@ -42,8 +43,12 @@ class EBS_Push {
 			return $this->fail( $post_id, __( 'No EasyBroker API key configured.', 'easybroker-sync' ) );
 		}
 
+		$valid_types = $client->property_types();
+
 		// Pre-flight validation — fail locally without wasting an API round-trip.
-		$errors = EBS_Field_Map::validate( $post_id );
+		$errors = $is_houzez
+			? EBS_Houzez::validate( $post_id, $valid_types )
+			: EBS_Field_Map::validate( $post_id );
 		if ( ! empty( $errors ) ) {
 			return $this->fail( $post_id, implode( ' ', $errors ) );
 		}
@@ -51,10 +56,22 @@ class EBS_Push {
 		$public_id = EBS_Field_Map::get( $post_id, 'eb_public_id', '' );
 		$is_create = '' === $public_id;
 
-		$hotlink     = 'hotlink' === EBS_Plugin::get_setting( 'image_mode', 'import' );
-		$image_urls  = $hotlink ? array() : EBS_Images::outgoing_urls( $post_id );
-		$valid_types = $client->property_types();
-		$payload     = EBS_Field_Map::to_easybroker( $post_id, $image_urls, $valid_types, $is_create );
+		$hotlink    = 'hotlink' === EBS_Plugin::get_setting( 'image_mode', 'import' );
+		$image_urls = array();
+		if ( ! $hotlink ) {
+			$image_urls = $is_houzez
+				? EBS_Houzez::outgoing_image_urls( $post_id )
+				: EBS_Images::outgoing_urls( $post_id );
+		}
+
+		$payload = $is_houzez
+			? EBS_Houzez::to_easybroker( $post_id, $image_urls, $valid_types, $is_create, $client )
+			: EBS_Field_Map::to_easybroker( $post_id, $image_urls, $valid_types, $is_create );
+
+		// Houzez location resolves lazily against /locations — catch failures here.
+		if ( $is_houzez && empty( $payload['location']['name'] ) ) {
+			return $this->fail( $post_id, __( 'Location could not be matched to an EasyBroker location. Set it in the EasyBroker box using the location lookup.', 'easybroker-sync' ) );
+		}
 
 		if ( $is_create ) {
 			$result = $client->create_property( $payload );
@@ -118,7 +135,7 @@ class EBS_Push {
 		}
 		$query = new WP_Query(
 			array(
-				'post_type'      => EBS_Cpt::POST_TYPE,
+				'post_type'      => EBS_Houzez::supported_post_types(),
 				'post_status'    => 'publish',
 				'posts_per_page' => $limit,
 				'fields'         => 'ids',

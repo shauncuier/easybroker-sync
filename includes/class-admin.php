@@ -24,6 +24,46 @@ class EBS_Admin {
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'assets' ) );
 		add_action( 'admin_notices', array( $this, 'notices' ) );
+
+		// Registered unconditionally: Houzez registers its post type on init
+		// (after plugins_loaded), and these filters only fire on its screen.
+		add_filter( 'manage_' . EBS_Houzez::POST_TYPE . '_posts_columns', array( $this, 'houzez_columns' ) );
+		add_action( 'manage_' . EBS_Houzez::POST_TYPE . '_posts_custom_column', array( $this, 'houzez_column_content' ), 10, 2 );
+	}
+
+	/**
+	 * Add an EasyBroker column to the Houzez property list table.
+	 *
+	 * @param array $columns Columns.
+	 * @return array
+	 */
+	public function houzez_columns( $columns ) {
+		$columns['ebs_sync'] = __( 'EasyBroker', 'easybroker-sync' );
+		return $columns;
+	}
+
+	/**
+	 * Render the EasyBroker column.
+	 *
+	 * @param string $column  Column key.
+	 * @param int    $post_id Post id.
+	 */
+	public function houzez_column_content( $column, $post_id ) {
+		if ( 'ebs_sync' !== $column ) {
+			return;
+		}
+		$status    = get_post_meta( $post_id, '_ebs_sync_status', true );
+		$public_id = get_post_meta( $post_id, '_ebs_eb_public_id', true );
+
+		if ( ! $status && ! $public_id ) {
+			echo '<span class="ebs-badge">' . esc_html__( 'not linked', 'easybroker-sync' ) . '</span>';
+			return;
+		}
+		$badge = 'synced' === $status ? 'success' : ( 'error' === $status ? 'error' : 'info' );
+		echo '<span class="ebs-badge ebs-badge-' . esc_attr( $badge ) . '">' . esc_html( $status ? $status : '—' ) . '</span>';
+		if ( $public_id ) {
+			echo '<br /><code>' . esc_html( $public_id ) . '</code>';
+		}
 	}
 
 	/**
@@ -31,7 +71,7 @@ class EBS_Admin {
 	 */
 	public function notices() {
 		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
-		if ( ! $screen || EBS_Cpt::POST_TYPE !== $screen->post_type ) {
+		if ( ! $screen || ! in_array( $screen->post_type, EBS_Houzez::supported_post_types(), true ) ) {
 			return;
 		}
 
@@ -114,6 +154,11 @@ class EBS_Admin {
 			? $input['cron_interval']
 			: 'ebs_hourly';
 
+		$allowed_targets      = array( 'auto', 'houzez', 'eb_property' );
+		$out['import_target'] = ( isset( $input['import_target'] ) && in_array( $input['import_target'], $allowed_targets, true ) )
+			? $input['import_target']
+			: 'auto';
+
 		return $out;
 	}
 
@@ -124,7 +169,7 @@ class EBS_Admin {
 	 */
 	public function assets( $hook ) {
 		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
-		$is_ours = ( $screen && EBS_Cpt::POST_TYPE === $screen->post_type )
+		$is_ours = ( $screen && in_array( $screen->post_type, EBS_Houzez::supported_post_types(), true ) )
 			|| ( false !== strpos( (string) $hook, self::MENU_SLUG ) );
 		if ( ! $is_ours ) {
 			return;
@@ -208,6 +253,19 @@ class EBS_Admin {
 							<label><input type="checkbox" name="<?php echo esc_attr( EBS_OPTION ); ?>[pull_own]" value="yes" <?php checked( $pull_own, 'yes' ); ?> /> <?php esc_html_e( 'Import own EasyBroker listings that do not yet exist in WordPress', 'easybroker-sync' ); ?></label>
 						</td>
 					</tr>
+					<?php if ( EBS_Houzez::is_active() ) : ?>
+					<tr>
+						<th scope="row"><label for="ebs_import_target"><?php esc_html_e( 'Import listings as', 'easybroker-sync' ); ?></label></th>
+						<td>
+							<?php $import_target = isset( $settings['import_target'] ) ? $settings['import_target'] : 'auto'; ?>
+							<select id="ebs_import_target" name="<?php echo esc_attr( EBS_OPTION ); ?>[import_target]">
+								<option value="auto" <?php selected( $import_target, 'auto' ); ?>><?php esc_html_e( 'Houzez properties (recommended — uses your theme UI)', 'easybroker-sync' ); ?></option>
+								<option value="houzez" <?php selected( $import_target, 'houzez' ); ?>><?php esc_html_e( 'Houzez properties (always)', 'easybroker-sync' ); ?></option>
+								<option value="eb_property" <?php selected( $import_target, 'eb_property' ); ?>><?php esc_html_e( 'Plugin post type (eb_property)', 'easybroker-sync' ); ?></option>
+							</select>
+						</td>
+					</tr>
+					<?php endif; ?>
 					<tr>
 						<th scope="row"><label for="ebs_cron_interval"><?php esc_html_e( 'Sync Frequency', 'easybroker-sync' ); ?></label></th>
 						<td>
@@ -221,6 +279,45 @@ class EBS_Admin {
 				</table>
 				<?php submit_button(); ?>
 			</form>
+
+			<?php if ( EBS_Houzez::is_active() ) : ?>
+				<h2 class="title"><?php esc_html_e( 'Houzez Properties', 'easybroker-sync' ); ?></h2>
+				<?php
+				$total_houzez = (int) wp_count_posts( EBS_Houzez::POST_TYPE )->publish;
+				$linked       = new WP_Query(
+					array(
+						'post_type'      => EBS_Houzez::POST_TYPE,
+						'post_status'    => 'publish',
+						'posts_per_page' => 1,
+						'fields'         => 'ids',
+						'meta_query'     => array(
+							array(
+								'key'     => '_ebs_eb_public_id',
+								'compare' => 'EXISTS',
+							),
+						),
+					)
+				);
+				$linked_count = (int) $linked->found_posts;
+				?>
+				<p>
+					<?php
+					printf(
+						/* translators: 1: published Houzez property count, 2: linked count. */
+						esc_html__( '%1$d published properties found in Houzez; %2$d already linked to EasyBroker.', 'easybroker-sync' ),
+						(int) $total_houzez,
+						(int) $linked_count
+					);
+					?>
+				</p>
+				<p>
+					<button type="button" class="button button-primary" id="ebs-houzez-sync"><?php esc_html_e( 'Sync all Houzez properties to EasyBroker', 'easybroker-sync' ); ?></button>
+					<span class="ebs-inline-result" id="ebs-houzez-result"></span>
+				</p>
+				<p class="description">
+					<?php esc_html_e( 'First pass links listings that already exist in EasyBroker by matching titles (so they update instead of duplicating), then pushes the rest in batches. Listings missing a mappable type, price, or location are reported in the Sync Log and can be fixed via the EasyBroker box on each property.', 'easybroker-sync' ); ?>
+				</p>
+			<?php endif; ?>
 
 			<h2 class="title"><?php esc_html_e( 'Manual Sync', 'easybroker-sync' ); ?></h2>
 			<p>

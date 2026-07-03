@@ -162,6 +162,22 @@ class EBS_Pull {
 	private function upsert_one( $property, $public_id ) {
 		$existing = $this->find_by_public_id( $public_id );
 
+		// When Houzez is active, import as native Houzez properties so listings
+		// use the site's existing UI (configurable via the import_target setting).
+		$target = EBS_Plugin::get_setting( 'import_target', 'auto' );
+		if ( ( 'houzez' === $target || 'auto' === $target ) && EBS_Houzez::is_active() ) {
+			if ( ! $existing && ! empty( $property['title'] ) ) {
+				// Avoid duplicating a listing that already exists in Houzez unlinked.
+				$existing = EBS_Houzez::find_unlinked_by_title( $property['title'] );
+			}
+			$post_id = EBS_Houzez::upsert_from_easybroker( $property, $public_id, (int) $existing );
+			if ( is_wp_error( $post_id ) ) {
+				EBS_Logger::log( 'pull', 'error', $post_id->get_error_message(), array( 'public_id' => $public_id ) );
+				return false;
+			}
+			return true;
+		}
+
 		$title       = isset( $property['title'] ) ? $property['title'] : __( '(untitled property)', 'easybroker-sync' );
 		$description = isset( $property['description'] ) ? $property['description'] : '';
 
@@ -252,7 +268,7 @@ class EBS_Pull {
 	private function find_by_public_id( $public_id ) {
 		$query = new WP_Query(
 			array(
-				'post_type'      => EBS_Cpt::POST_TYPE,
+				'post_type'      => EBS_Houzez::supported_post_types(),
 				'post_status'    => 'any',
 				'posts_per_page' => 1,
 				'fields'         => 'ids',

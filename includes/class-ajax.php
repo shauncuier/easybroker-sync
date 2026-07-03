@@ -23,6 +23,100 @@ class EBS_Ajax {
 		add_action( 'wp_ajax_ebs_pull_now', array( $this, 'pull_now' ) );
 		add_action( 'wp_ajax_ebs_location_search', array( $this, 'location_search' ) );
 		add_action( 'wp_ajax_ebs_push_one', array( $this, 'push_one' ) );
+		add_action( 'wp_ajax_ebs_houzez_bulk', array( $this, 'houzez_bulk' ) );
+	}
+
+	/**
+	 * Bulk-sync Houzez properties to EasyBroker, batched. The first call links
+	 * title-matching listings (update instead of duplicate) and queues the rest;
+	 * every call then pushes a small batch and reports the remaining count so
+	 * the browser can loop.
+	 */
+	public function houzez_bulk() {
+		$this->guard();
+		if ( ! EBS_Houzez::is_active() ) {
+			wp_send_json_error( array( 'message' => __( 'Houzez is not active.', 'easybroker-sync' ) ) );
+		}
+
+		$client = new EBS_Api_Client();
+		if ( ! $client->has_key() ) {
+			wp_send_json_error( array( 'message' => __( 'No EasyBroker API key configured.', 'easybroker-sync' ) ) );
+		}
+
+		$first  = ! empty( $_POST['first'] );
+		$linked = 0;
+
+		if ( $first ) {
+			$linked = EBS_Houzez::link_existing( $client );
+
+			// Queue every published Houzez property that isn't synced yet.
+			$to_queue = get_posts(
+				array(
+					'post_type'      => EBS_Houzez::POST_TYPE,
+					'post_status'    => 'publish',
+					'posts_per_page' => -1,
+					'fields'         => 'ids',
+					'meta_query'     => array(
+						'relation' => 'OR',
+						array(
+							'key'     => '_ebs_sync_status',
+							'compare' => 'NOT EXISTS',
+						),
+						array(
+							'key'     => '_ebs_sync_status',
+							'value'   => 'synced',
+							'compare' => '!=',
+						),
+					),
+				)
+			);
+			foreach ( $to_queue as $qid ) {
+				update_post_meta( $qid, '_ebs_sync_status', 'pending' );
+				delete_post_meta( $qid, '_ebs_sync_attempts' ); // Fresh explicit run gets fresh retries.
+			}
+		}
+
+		$push    = new EBS_Push();
+		$summary = $push->push_pending( 5 );
+
+		// Remaining = still pending and under the attempts cap.
+		$remaining_q = new WP_Query(
+			array(
+				'post_type'      => EBS_Houzez::supported_post_types(),
+				'post_status'    => 'publish',
+				'posts_per_page' => 1,
+				'fields'         => 'ids',
+				'meta_query'     => array(
+					'relation' => 'AND',
+					array(
+						'key'   => '_ebs_sync_status',
+						'value' => 'pending',
+					),
+					array(
+						'relation' => 'OR',
+						array(
+							'key'     => '_ebs_sync_attempts',
+							'compare' => 'NOT EXISTS',
+						),
+						array(
+							'key'     => '_ebs_sync_attempts',
+							'value'   => EBS_Push::MAX_ATTEMPTS,
+							'compare' => '<',
+							'type'    => 'NUMERIC',
+						),
+					),
+				),
+			)
+		);
+
+		wp_send_json_success(
+			array(
+				'linked'    => (int) $linked,
+				'ok'        => (int) $summary['ok'],
+				'fail'      => (int) $summary['fail'],
+				'remaining' => (int) $remaining_q->found_posts,
+			)
+		);
 	}
 
 	/**

@@ -47,6 +47,15 @@ Cross-post WordPress property listings to [EasyBroker](https://www.easybroker.co
 
 ## 📝 Changelog
 
+### 0.4.0
+- Houzez theme integration
+- Push existing Houzez properties (post type `property`, fave_* fields) to EasyBroker
+- Bulk “Sync all Houzez properties” with a title-matching link pass that updates existing EasyBroker listings instead of creating duplicates
+- EasyBroker imports now create native Houzez properties (theme UI) when Houzez is active — configurable via the “Import listings as” setting
+- EasyBroker Sync box on Houzez properties: status, Push now, location lookup, type/currency/agent overrides
+- EasyBroker status column in the Houzez property list table
+- Houzez location auto-resolution via the EasyBroker /locations endpoint
+
 ### 0.3.0
 - Added: concurrency locks — pull and push never overlap (fixes cron vs. manual button race)
 - Added: push time budget so push never hits `max_execution_time`

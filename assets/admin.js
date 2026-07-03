@@ -41,6 +41,53 @@
 			post( action, $( '#ebs-action-result' ), $( this ) );
 		} );
 
+		// Houzez bulk sync: link pass, then batched pushes until none remain.
+		$( '#ebs-houzez-sync' ).on( 'click', function () {
+			var $btn = $( this );
+			var $res = $( '#ebs-houzez-result' );
+			var totals = { linked: 0, ok: 0, fail: 0 };
+			var maxRounds = 60;
+
+			function round( first ) {
+				if ( maxRounds-- <= 0 ) {
+					$res.addClass( 'is-error' ).text( 'Stopped: too many rounds. Check the Sync Log.' );
+					$btn.prop( 'disabled', false );
+					return;
+				}
+				$.post( EBS_Admin.ajaxUrl, {
+					action: 'ebs_houzez_bulk',
+					nonce: EBS_Admin.nonce,
+					first: first ? 1 : 0
+				} )
+					.done( function ( r ) {
+						if ( ! r || ! r.success ) {
+							$res.addClass( 'is-error' ).text( ( r && r.data && r.data.message ) || EBS_Admin.strings.failed );
+							$btn.prop( 'disabled', false );
+							return;
+						}
+						totals.linked += r.data.linked;
+						totals.ok += r.data.ok;
+						totals.fail += r.data.fail;
+						if ( r.data.remaining > 0 ) {
+							$res.text( 'Linked ' + totals.linked + ', pushed ' + totals.ok + ', errors ' + totals.fail + ' — ' + r.data.remaining + ' remaining…' );
+							round( false );
+						} else {
+							$res.removeClass( 'is-error' ).addClass( totals.fail ? 'is-error' : 'is-ok' )
+								.text( 'Done. Linked ' + totals.linked + ', pushed ' + totals.ok + ', errors ' + totals.fail + ( totals.fail ? ' — see Sync Log.' : '.' ) );
+							$btn.prop( 'disabled', false );
+						}
+					} )
+					.fail( function () {
+						$res.addClass( 'is-error' ).text( EBS_Admin.strings.failed );
+						$btn.prop( 'disabled', false );
+					} );
+			}
+
+			$btn.prop( 'disabled', true );
+			$res.removeClass( 'is-ok is-error' ).text( EBS_Admin.strings.working );
+			round( true );
+		} );
+
 		// Manual per-post push (editor).
 		$( '#ebs-push-now' ).on( 'click', function () {
 			var $btn = $( this );

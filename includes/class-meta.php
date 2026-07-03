@@ -22,10 +22,11 @@ class EBS_Meta {
 	public function hooks() {
 		add_action( 'add_meta_boxes', array( $this, 'add_box' ) );
 		add_action( 'save_post_' . EBS_Cpt::POST_TYPE, array( $this, 'save' ), 10, 2 );
+		add_action( 'save_post_' . EBS_Houzez::POST_TYPE, array( $this, 'save_houzez' ), 20, 2 );
 	}
 
 	/**
-	 * Add the meta box.
+	 * Add the meta boxes (full box on our CPT, compact box on Houzez properties).
 	 */
 	public function add_box() {
 		add_meta_box(
@@ -36,6 +37,119 @@ class EBS_Meta {
 			'normal',
 			'high'
 		);
+
+		if ( EBS_Houzez::is_active() ) {
+			add_meta_box(
+				'ebs_houzez_sync',
+				__( 'EasyBroker Sync', 'easybroker-sync' ),
+				array( $this, 'render_houzez' ),
+				EBS_Houzez::POST_TYPE,
+				'side',
+				'high'
+			);
+		}
+	}
+
+	/**
+	 * Compact sync box on Houzez properties: status, Push now, and the few
+	 * EasyBroker-specific overrides Houzez has no field for.
+	 *
+	 * @param WP_Post $post Current post.
+	 */
+	public function render_houzez( $post ) {
+		wp_nonce_field( self::NONCE, self::NONCE );
+
+		$status    = EBS_Field_Map::get( $post->ID, 'sync_status', '—' );
+		$message   = EBS_Field_Map::get( $post->ID, 'sync_message', '' );
+		$public_id = EBS_Field_Map::get( $post->ID, 'eb_public_id', '' );
+
+		echo '<div class="ebs-meta">';
+		echo '<p class="ebs-status ebs-status-' . esc_attr( $status ) . '"><strong>' . esc_html__( 'Status:', 'easybroker-sync' ) . '</strong> ' . esc_html( $status );
+		if ( $public_id ) {
+			echo ' &middot; <code>' . esc_html( $public_id ) . '</code>';
+		}
+		echo '</p>';
+		if ( $message ) {
+			echo '<p class="ebs-status-msg description">' . esc_html( $message ) . '</p>';
+		}
+
+		printf(
+			'<p><button type="button" class="button" id="ebs-push-now" data-post-id="%1$d">%2$s</button> <span class="ebs-inline-result" id="ebs-push-now-result"></span></p>',
+			(int) $post->ID,
+			esc_html__( 'Push to EasyBroker now', 'easybroker-sync' )
+		);
+
+		$fields = array(
+			'eb_public_id'  => array( __( 'EasyBroker ID', 'easybroker-sync' ), __( 'Link to an existing EasyBroker listing (e.g. EB-XX1234) so pushes update it instead of creating a new one.', 'easybroker-sync' ) ),
+			'location_name' => array( __( 'EasyBroker Location', 'easybroker-sync' ), __( 'Auto-resolved from City/State; set it here if the push reports a location error.', 'easybroker-sync' ) ),
+			'property_type' => array( __( 'EB Type override', 'easybroker-sync' ), __( 'e.g. House, Apartment, Villa, Lot…', 'easybroker-sync' ) ),
+			'currency'      => array( __( 'Currency override', 'easybroker-sync' ), __( 'MXN or USD. Auto-detected from the price postfix.', 'easybroker-sync' ) ),
+			'agent_email'   => array( __( 'Agent Email', 'easybroker-sync' ), '' ),
+		);
+		foreach ( $fields as $key => $def ) {
+			$value = EBS_Field_Map::get( $post->ID, $key, '' );
+			printf(
+				'<p><label for="ebs_%1$s"><strong>%2$s</strong></label><br /><input type="text" id="ebs_%1$s" name="ebs_%1$s" value="%3$s" class="widefat" />%4$s</p>',
+				esc_attr( $key ),
+				esc_html( $def[0] ),
+				esc_attr( $value ),
+				$def[1] ? '<span class="description">' . esc_html( $def[1] ) . '</span>' : ''
+			);
+		}
+		?>
+		<div class="ebs-loc-lookup">
+			<label for="ebs-loc-query"><strong><?php esc_html_e( 'Location lookup', 'easybroker-sync' ); ?></strong></label>
+			<input type="text" id="ebs-loc-query" class="widefat" placeholder="<?php esc_attr_e( 'e.g. Mérida, Yucatán', 'easybroker-sync' ); ?>" />
+			<button type="button" class="button" id="ebs-loc-search"><?php esc_html_e( 'Search', 'easybroker-sync' ); ?></button>
+			<span class="ebs-inline-result" id="ebs-loc-status"></span>
+			<ul id="ebs-loc-results" class="ebs-loc-results"></ul>
+		</div>
+		<?php
+		echo '</div>';
+	}
+
+	/**
+	 * Save the EasyBroker overrides on a Houzez property and queue a push.
+	 *
+	 * @param int     $post_id Post id.
+	 * @param WP_Post $post    Post object.
+	 */
+	public function save_houzez( $post_id, $post ) {
+		if ( ! isset( $_POST[ self::NONCE ] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST[ self::NONCE ] ) ), self::NONCE ) ) {
+			return;
+		}
+		if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+			return;
+		}
+		if ( ! current_user_can( 'edit_post', $post_id ) ) {
+			return;
+		}
+
+		$overrides = array(
+			'eb_public_id'  => 'sanitize_text_field',
+			'location_name' => 'sanitize_text_field',
+			'property_type' => 'sanitize_text_field',
+			'currency'      => 'sanitize_text_field',
+			'agent_email'   => 'sanitize_email',
+		);
+		foreach ( $overrides as $key => $sanitizer ) {
+			$input = 'ebs_' . $key;
+			if ( ! isset( $_POST[ $input ] ) ) {
+				continue;
+			}
+			$value = call_user_func( $sanitizer, wp_unslash( $_POST[ $input ] ) );
+			if ( '' === $value ) {
+				delete_post_meta( $post_id, '_ebs_' . $key );
+			} else {
+				EBS_Field_Map::set( $post_id, $key, $value );
+			}
+		}
+
+		if ( 'publish' !== $post->post_status ) {
+			return;
+		}
+		EBS_Field_Map::set( $post_id, 'sync_status', 'pending' );
+		$this->enqueue_push( $post_id );
 	}
 
 	/**

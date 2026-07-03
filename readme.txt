@@ -4,7 +4,7 @@ Tags: real estate, easybroker, listings, sync, mexico
 Requires at least: 6.0
 Tested up to: 6.5
 Requires PHP: 7.4
-Stable tag: 0.3.0
+Stable tag: 0.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,18 @@ the property already has an EasyBroker ID it is updated (PATCH); otherwise it is
 created (POST) and the returned ID is stored.
 
 == Changelog ==
+
+= 0.4.0 =
+* Houzez theme integration.
+* Push existing Houzez properties (post type `property`, fave_* fields) to EasyBroker.
+* Bulk “Sync all Houzez properties” with a title-matching link pass that updates
+  existing EasyBroker listings instead of creating duplicates.
+* EasyBroker imports now create native Houzez properties (theme UI) when Houzez
+  is active — configurable via the “Import listings as” setting.
+* EasyBroker Sync box on Houzez properties: status, Push now, location lookup,
+  type/currency/agent overrides.
+* EasyBroker status column in the Houzez property list table.
+* Houzez location auto-resolution via the EasyBroker /locations endpoint.
 
 = 0.3.0 =
 * Added: concurrency locks — pull and push never overlap (cron vs. manual button race condition fixed).

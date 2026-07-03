@@ -41,6 +41,22 @@ site with public URLs (EasyBroker fetches images by URL).
 - [ ] Collaboration agencies appear in the roster table
 - [ ] Re-import does not clobber locally edited own listings
 
+## Houzez integration (when the Houzez theme is active)
+- [ ] Properties list table shows the **EasyBroker** column (status badge + EB ID)
+- [ ] Each Houzez property editor shows the **EasyBroker Sync** side box
+- [ ] **Bulk sync** (Properties → EasyBroker Sync → "Sync all Houzez properties"):
+  - link pass connects title-matching listings (check Sync Log for "Linked existing…")
+  - linked listings **PATCH** the existing EB record (no duplicate created in EasyBroker)
+  - unlinked listings are pushed as new; failures appear in the Sync Log with reasons
+- [ ] Manual **EasyBroker ID** field links a listing; next push updates that EB record
+- [ ] Location auto-resolves from Houzez City/State; unresolvable → clear error + lookup works
+- [ ] Property type maps via alias (Land→Lot etc.); unmappable → clear error + override works
+- [ ] Price with `USD` postfix pushes as USD; otherwise the default currency
+- [ ] **Import from EasyBroker** creates a native Houzez property (price, beds/baths,
+      gallery in `fave_property_images`, For Sale/For Rent status, map coordinates)
+      that renders correctly in the theme's card + detail UI
+- [ ] Re-running import does not duplicate (matches by EB ID, then by title)
+
 ## Resilience
 - [ ] Set `DISABLE_WP_CRON` → warning notice shown; **Push now** / **Import** still work
 - [ ] Simulate HTTP 429 (mock) → request honors `Retry-After` once, then errors gracefully
