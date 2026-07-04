@@ -70,7 +70,14 @@ class EBS_Push {
 
 		// Houzez location resolves lazily against /locations — catch failures here.
 		if ( $is_houzez && empty( $payload['location']['name'] ) ) {
-			return $this->fail( $post_id, __( 'Location could not be matched to an EasyBroker location. Set it in the EasyBroker box using the location lookup.', 'easybroker-sync' ) );
+			return $this->fail(
+				$post_id,
+				sprintf(
+					/* translators: %s: the city/state query that failed to resolve. */
+					__( 'Location "%s" could not be matched to an EasyBroker location. Set it in the EasyBroker box using the location lookup.', 'easybroker-sync' ),
+					EBS_Houzez::location_query( $post_id )
+				)
+			);
 		}
 
 		if ( $is_create ) {
@@ -79,6 +86,35 @@ class EBS_Push {
 		} else {
 			$result = $client->update_property( $public_id, $payload );
 			$action = 'update';
+
+			// The linked listing no longer exists on EasyBroker (deleted remotely,
+			// or a bad manual link). Clear the stale id and create a fresh listing
+			// instead of failing on every future push.
+			if ( is_wp_error( $result ) && 'ebs_http_404' === $result->get_error_code() ) {
+				EBS_Logger::log(
+					'push',
+					'info',
+					sprintf(
+						/* translators: %s: EasyBroker property id. */
+						__( 'EasyBroker listing %s no longer exists — re-creating it.', 'easybroker-sync' ),
+						$public_id
+					),
+					array(
+						'post_id'   => $post_id,
+						'public_id' => $public_id,
+					)
+				);
+				delete_post_meta( $post_id, EBS_Field_Map::key( 'eb_public_id' ) );
+				$public_id = '';
+
+				// Rebuild as a create so images are included again.
+				$payload = $is_houzez
+					? EBS_Houzez::to_easybroker( $post_id, $image_urls, $valid_types, true, $client )
+					: EBS_Field_Map::to_easybroker( $post_id, $image_urls, $valid_types, true );
+
+				$result = $client->create_property( $payload );
+				$action = 'create';
+			}
 		}
 
 		if ( is_wp_error( $result ) ) {
@@ -119,17 +155,28 @@ class EBS_Push {
 	/**
 	 * Push all posts currently in pending/error status.
 	 *
-	 * @param int $limit       Max posts to process this run.
-	 * @param int $time_budget Seconds to spend before stopping early, so an
-	 *                         admin-ajax request never hits max_execution_time.
-	 *                         Unpushed posts stay 'pending' for the next run.
-	 * @return array Summary counts.
+	 * @param int      $limit       Max posts to process this run.
+	 * @param int      $time_budget Seconds to spend before stopping early, so an
+	 *                              admin-ajax request never hits max_execution_time.
+	 *                              Unpushed posts stay 'pending' for the next run.
+	 * @param string[] $statuses    Sync statuses to process. Cron uses the default
+	 *                              (pending + error) so failures retry up to
+	 *                              MAX_ATTEMPTS; the bulk-sync browser loop passes
+	 *                              only 'pending' so each post is attempted once
+	 *                              per run instead of re-burning its retry budget
+	 *                              on every batch.
+	 * @return array Summary counts, plus per-post error lines under 'errors'.
 	 */
-	public function push_pending( $limit = 25, $time_budget = 20 ) {
+	public function push_pending( $limit = 25, $time_budget = 20, $statuses = array( 'pending', 'error' ) ) {
+		$statuses = array_values( array_intersect( (array) $statuses, array( 'pending', 'error' ) ) );
+		if ( empty( $statuses ) ) {
+			$statuses = array( 'pending', 'error' );
+		}
 		if ( ! EBS_Plugin::acquire_lock( 'push' ) ) {
 			return array(
 				'ok'     => 0,
 				'fail'   => 0,
+				'errors' => array(),
 				'locked' => true,
 			);
 		}
@@ -144,7 +191,7 @@ class EBS_Push {
 					'relation' => 'AND',
 					array(
 						'key'     => '_ebs_sync_status',
-						'value'   => array( 'pending', 'error' ),
+						'value'   => $statuses,
 						'compare' => 'IN',
 					),
 					array(
@@ -178,6 +225,7 @@ class EBS_Push {
 
 		$ok       = 0;
 		$fail     = 0;
+		$errors   = array();
 		$deadline = time() + max( 5, (int) $time_budget );
 
 		try {
@@ -188,6 +236,15 @@ class EBS_Push {
 				$result = $this->push_post( $post_id );
 				if ( is_wp_error( $result ) ) {
 					$fail++;
+					if ( count( $errors ) < 10 ) {
+						$errors[] = sprintf(
+							/* translators: 1: post title, 2: post id, 3: error message. */
+							__( '%1$s (post #%2$d): %3$s', 'easybroker-sync' ),
+							get_the_title( $post_id ),
+							$post_id,
+							$result->get_error_message()
+						);
+					}
 				} else {
 					$ok++;
 				}
@@ -198,8 +255,9 @@ class EBS_Push {
 		}
 
 		return array(
-			'ok'   => $ok,
-			'fail' => $fail,
+			'ok'     => $ok,
+			'fail'   => $fail,
+			'errors' => $errors,
 		);
 	}
 

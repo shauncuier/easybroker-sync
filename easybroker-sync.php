@@ -3,7 +3,7 @@
  * Plugin Name:       EasyBroker Sync
  * Plugin URI:        https://domeluxmerida.com/
  * Description:        Cross-post WordPress property listings to EasyBroker and pull collaboration + own listings back into WordPress for display.
- * Version:           0.4.0
+ * Version:           0.5.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Domelux Merida
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct access.
 }
 
-define( 'EBS_VERSION', '0.4.0' );
+define( 'EBS_VERSION', '0.5.0' );
 define( 'EBS_FILE', __FILE__ );
 define( 'EBS_DIR', plugin_dir_path( __FILE__ ) );
 define( 'EBS_URL', plugin_dir_url( __FILE__ ) );

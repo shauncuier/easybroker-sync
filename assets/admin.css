@@ -46,6 +46,18 @@
 	background: #2271b1;
 }
 
+.ebs-bulk-errors {
+	margin: 8px 0 4px;
+	padding: 8px 12px;
+	max-width: 720px;
+	background: #fcf0f1;
+	border-left: 4px solid #b32d2e;
+	color: #b32d2e;
+}
+.ebs-bulk-errors li {
+	margin: 2px 0;
+}
+
 .ebs-loc-lookup {
 	margin: 8px 0 4px;
 	padding: 12px;

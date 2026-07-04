@@ -47,6 +47,15 @@ Cross-post WordPress property listings to [EasyBroker](https://www.easybroker.co
 
 ## 📝 Changelog
 
+### 0.5.0
+- Spanish property type aliases (casa, departamento, terreno, etc.) for Houzez mapping, with auto-alignment to canonical spellings
+- Inline display of up to 10 validation/sync errors directly in the WordPress admin panel for bulk pushes
+- Auto-recreation of EasyBroker properties on update when the remote listing has been deleted (HTTP 404)
+- Negative caching transient for failed location lookups to avoid redundant API hits
+- Robust API diagnostics including HTTP status in error logs, recursive array stringification to prevent imploding fatals, and raw response parsing for non-JSON content
+- Restrict bulk sync AJAX to only pull 'pending' status records, avoiding retrying failed posts repeatedly in the same run
+- Display post title alongside ID in the sync log
+
 ### 0.4.0
 - Houzez theme integration
 - Push existing Houzez properties (post type `property`, fave_* fields) to EasyBroker

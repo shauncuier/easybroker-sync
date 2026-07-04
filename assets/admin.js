@@ -2,12 +2,29 @@
 ( function ( $ ) {
 	'use strict';
 
+	// Render per-post error lines below the result element (capped at 10).
+	function showErrorList( $anchor, errors ) {
+		var $p = $anchor.closest( 'p' );
+		$p.next( '.ebs-bulk-errors' ).remove();
+		if ( ! errors || ! errors.length ) {
+			return;
+		}
+		var $errs = $( '<ul class="ebs-bulk-errors"/>' ).insertAfter( $p );
+		$.each( errors.slice( 0, 10 ), function ( i, msg ) {
+			$( '<li/>' ).text( msg ).appendTo( $errs );
+		} );
+		if ( errors.length > 10 ) {
+			$( '<li/>' ).text( '… +' + ( errors.length - 10 ) + ' more — see Sync Log.' ).appendTo( $errs );
+		}
+	}
+
 	function post( action, $result, $btn ) {
 		var original = $btn ? $btn.text() : '';
 		if ( $btn ) {
 			$btn.prop( 'disabled', true );
 		}
 		$result.removeClass( 'is-ok is-error' ).text( EBS_Admin.strings.working );
+		showErrorList( $result, [] );
 
 		$.post( EBS_Admin.ajaxUrl, {
 			action: action,
@@ -20,6 +37,7 @@
 					var msg = res && res.data && res.data.message ? res.data.message : EBS_Admin.strings.failed;
 					$result.addClass( 'is-error' ).text( msg );
 				}
+				showErrorList( $result, res && res.data && res.data.errors );
 			} )
 			.fail( function () {
 				$result.addClass( 'is-error' ).text( EBS_Admin.strings.failed );
@@ -46,6 +64,7 @@
 			var $btn = $( this );
 			var $res = $( '#ebs-houzez-result' );
 			var totals = { linked: 0, ok: 0, fail: 0 };
+			var errList = [];
 			var maxRounds = 60;
 
 			function round( first ) {
@@ -68,12 +87,16 @@
 						totals.linked += r.data.linked;
 						totals.ok += r.data.ok;
 						totals.fail += r.data.fail;
+						if ( r.data.errors && r.data.errors.length ) {
+							errList = errList.concat( r.data.errors );
+						}
 						if ( r.data.remaining > 0 ) {
 							$res.text( 'Linked ' + totals.linked + ', pushed ' + totals.ok + ', errors ' + totals.fail + ' — ' + r.data.remaining + ' remaining…' );
 							round( false );
 						} else {
 							$res.removeClass( 'is-error' ).addClass( totals.fail ? 'is-error' : 'is-ok' )
-								.text( 'Done. Linked ' + totals.linked + ', pushed ' + totals.ok + ', errors ' + totals.fail + ( totals.fail ? ' — see Sync Log.' : '.' ) );
+								.text( 'Done. Linked ' + totals.linked + ', pushed ' + totals.ok + ', errors ' + totals.fail + ( totals.fail ? ':' : '.' ) );
+							showErrorList( $res, errList );
 							$btn.prop( 'disabled', false );
 						}
 					} )
@@ -85,6 +108,7 @@
 
 			$btn.prop( 'disabled', true );
 			$res.removeClass( 'is-ok is-error' ).text( EBS_Admin.strings.working );
+			showErrorList( $res, [] );
 			round( true );
 		} );
 

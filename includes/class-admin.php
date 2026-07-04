@@ -383,7 +383,10 @@ class EBS_Admin {
 			if ( ! empty( $row['post_id'] ) ) {
 				$edit = get_edit_post_link( $row['post_id'] );
 				if ( $edit ) {
-					$post_link = ' (<a href="' . esc_url( $edit ) . '">#' . (int) $row['post_id'] . '</a>)';
+					// "post #123", not "#123" — a bare number reads like an HTTP status.
+					$title     = trim( (string) get_the_title( $row['post_id'] ) );
+					$label     = ( '' !== $title ? $title . ' — ' : '' ) . 'post #' . (int) $row['post_id'];
+					$post_link = ' (<a href="' . esc_url( $edit ) . '">' . esc_html( $label ) . '</a>)';
 				}
 			}
 			printf(

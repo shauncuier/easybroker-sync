@@ -84,6 +84,13 @@ class EBS_Api_Client {
 		);
 		if ( null !== $body ) {
 			$args['body'] = wp_json_encode( $body );
+			if ( false === $args['body'] ) {
+				// Invalid UTF-8 in a field (bad copy-paste, mojibake) breaks encoding.
+				return new WP_Error(
+					'ebs_bad_payload',
+					__( 'The property contains characters that cannot be encoded — check the title/description for corrupted text.', 'easybroker-sync' )
+				);
+			}
 		}
 
 		// Up to 2 attempts: retry once on 429 / transient 5xx, honoring Retry-After.
@@ -111,6 +118,11 @@ class EBS_Api_Client {
 
 		if ( $code < 200 || $code >= 300 ) {
 			$message = $this->extract_error_message( $data, $code );
+			// Always carry the HTTP status in the message — it is the single most
+			// useful debugging datum and EB error bodies rarely include it.
+			if ( false === strpos( $message, 'HTTP ' . $code ) ) {
+				$message .= sprintf( ' (HTTP %d)', $code );
+			}
 			return new WP_Error(
 				'ebs_http_' . $code,
 				$message,
@@ -118,6 +130,22 @@ class EBS_Api_Client {
 					'status' => $code,
 					'body'   => $data,
 				)
+			);
+		}
+
+		// A 2xx with a non-JSON body means something between us and EasyBroker
+		// (proxy, WAF, maintenance page) answered instead — treat it as a failure
+		// rather than returning an empty array a caller could mistake for success
+		// (e.g. a create would "succeed" without ever storing the returned id).
+		if ( null === $data && '' !== trim( (string) $raw ) ) {
+			return new WP_Error(
+				'ebs_bad_json',
+				sprintf(
+					/* translators: %d: HTTP status code. */
+					__( 'EasyBroker returned an unexpected non-JSON response (HTTP %d) — possibly a proxy or maintenance page.', 'easybroker-sync' ),
+					$code
+				),
+				array( 'status' => $code )
 			);
 		}
 
@@ -140,11 +168,10 @@ class EBS_Api_Client {
 				if ( is_array( $data['errors'] ) ) {
 					$parts = array();
 					foreach ( $data['errors'] as $field => $msgs ) {
-						$parts[] = is_array( $msgs )
-							? $field . ': ' . implode( ', ', $msgs )
-							: (string) $msgs;
+						$text    = $this->stringify_error( $msgs );
+						$parts[] = is_string( $field ) ? $field . ': ' . $text : $text;
 					}
-					return implode( ' | ', $parts );
+					return implode( ' | ', array_filter( $parts ) );
 				}
 				return (string) $data['errors'];
 			}
@@ -154,6 +181,27 @@ class EBS_Api_Client {
 		}
 		/* translators: %d: HTTP status code. */
 		return sprintf( __( 'EasyBroker request failed (HTTP %d).', 'easybroker-sync' ), $code );
+	}
+
+	/**
+	 * Flatten an error value (string, or arbitrarily nested arrays of strings)
+	 * into readable text without ever fataling on implode(array).
+	 *
+	 * @param mixed $value Error value from the response body.
+	 * @return string
+	 */
+	private function stringify_error( $value ) {
+		if ( is_scalar( $value ) ) {
+			return (string) $value;
+		}
+		if ( is_array( $value ) ) {
+			$flat = array();
+			foreach ( $value as $v ) {
+				$flat[] = $this->stringify_error( $v );
+			}
+			return implode( ', ', array_filter( $flat ) );
+		}
+		return '';
 	}
 
 	/**

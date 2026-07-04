@@ -70,6 +70,21 @@ class EBS_Houzez {
 			'waterfront'    => 'House',
 			'historic'      => 'House',
 			'equestrian'    => 'Ranch',
+			// Spanish term names, common on Mexican Houzez sites.
+			'casa'            => 'House',
+			'casa sola'       => 'House',
+			'departamento'    => 'Apartment',
+			'depto'           => 'Apartment',
+			'penthouse'       => 'Apartment',
+			'terreno'         => 'Lot',
+			'lote'            => 'Lot',
+			'rancho'          => 'Ranch',
+			'hacienda'        => 'Ranch',
+			'oficina'         => 'Office',
+			'local'           => 'Retail Space',
+			'local comercial' => 'Retail Space',
+			'bodega'          => 'Industrial Warehouse',
+			'edificio'        => 'Building',
 		);
 
 		/**
@@ -88,21 +103,28 @@ class EBS_Houzez {
 	 * @return string Empty when unmappable.
 	 */
 	public static function eb_property_type( $post_id, $valid_types = array() ) {
-		// Explicit override wins.
-		$override = get_post_meta( $post_id, '_ebs_property_type', true );
-		if ( $override ) {
-			return $override;
+		$map = self::type_map();
+
+		// Explicit override wins — but run it through the alias map too, so
+		// typing "casa" or "Departamento" in the box works like a term would.
+		$override = trim( (string) get_post_meta( $post_id, '_ebs_property_type', true ) );
+		if ( '' !== $override ) {
+			$key = strtolower( $override );
+			if ( isset( $map[ $key ] ) ) {
+				return self::align_type( $map[ $key ], $valid_types );
+			}
+			return self::align_type( $override, $valid_types );
 		}
 
 		$terms = get_the_terms( $post_id, 'property_type' );
 		if ( is_wp_error( $terms ) || empty( $terms ) ) {
 			return '';
 		}
-		$map = self::type_map();
 		foreach ( $terms as $term ) {
 			$name = strtolower( $term->name );
 			if ( isset( $map[ $name ] ) ) {
-				return $map[ $name ];
+				// Align to the account's canonical spelling when we know it.
+				return self::align_type( $map[ $name ], $valid_types );
 			}
 			// Exact EasyBroker name used directly as a Houzez term.
 			foreach ( $valid_types as $vt ) {
@@ -112,6 +134,23 @@ class EBS_Houzez {
 			}
 		}
 		return '';
+	}
+
+	/**
+	 * Case-insensitively align a type string to the account's valid list.
+	 * Returns the input unchanged when the list is empty or has no match.
+	 *
+	 * @param string $type  Candidate type.
+	 * @param array  $valid Valid EasyBroker types.
+	 * @return string
+	 */
+	private static function align_type( $type, $valid ) {
+		foreach ( (array) $valid as $vt ) {
+			if ( 0 === strcasecmp( $vt, $type ) ) {
+				return $vt;
+			}
+		}
+		return $type;
 	}
 
 	/**
@@ -162,8 +201,13 @@ class EBS_Houzez {
 			return strtoupper( $override );
 		}
 		$hint = self::meta( $post_id, array( 'fave_property_price_postfix', 'fave_property_price_prefix' ) );
-		if ( $hint && false !== stripos( $hint, 'usd' ) ) {
-			return 'USD';
+		if ( $hint ) {
+			if ( preg_match( '/usd|dll?s|dollar|d[oó]lar/i', $hint ) ) {
+				return 'USD';
+			}
+			if ( preg_match( '/mxn|\bmn\b|peso/i', $hint ) ) {
+				return 'MXN';
+			}
 		}
 		return strtoupper( EBS_Plugin::get_setting( 'currency', 'MXN' ) );
 	}
@@ -223,11 +267,37 @@ class EBS_Houzez {
 		if ( '' === $query ) {
 			return '';
 		}
+
+		// Negative cache: many posts share the same bad city (e.g. demo data),
+		// and cron retries the same posts — don't hit /locations for a query
+		// that just failed to match.
+		$miss_key = 'ebs_loc_miss_' . md5( $query );
+		if ( get_transient( $miss_key ) ) {
+			return '';
+		}
+
 		$result = $client->search_locations( $query );
-		if ( is_wp_error( $result ) || empty( $result['full_name'] ) ) {
+		if ( is_wp_error( $result ) ) {
+			return ''; // Network/API failure — don't cache, next attempt may succeed.
+		}
+		if ( empty( $result['full_name'] ) ) {
+			set_transient( $miss_key, 1, 15 * MINUTE_IN_SECONDS );
 			return '';
 		}
 		update_post_meta( $post_id, '_ebs_location_name', sanitize_text_field( $result['full_name'] ) );
+		// Logged once (result is cached in meta): a bad source city — e.g. Houzez
+		// demo data — can silently resolve to an unrelated EasyBroker location.
+		EBS_Logger::log(
+			'push',
+			'info',
+			sprintf(
+				/* translators: 1: Houzez city/state query, 2: resolved EasyBroker location. */
+				__( 'Location "%1$s" resolved to EasyBroker location "%2$s". If that is wrong, correct it in the EasyBroker box.', 'easybroker-sync' ),
+				$query,
+				$result['full_name']
+			),
+			array( 'post_id' => $post_id )
+		);
 		return $result['full_name'];
 	}
 
@@ -249,11 +319,21 @@ class EBS_Houzez {
 			$errors[] = __( 'Description (post content) is required.', 'easybroker-sync' );
 		}
 		if ( '' === self::eb_property_type( $post_id, $valid_types ) ) {
-			$errors[] = __( 'Property type could not be mapped to an EasyBroker type — set the override in the EasyBroker box.', 'easybroker-sync' );
+			$terms = get_the_terms( $post_id, 'property_type' );
+			$names = ( ! is_wp_error( $terms ) && ! empty( $terms ) ) ? wp_list_pluck( $terms, 'name' ) : array();
+			if ( empty( $names ) ) {
+				$errors[] = __( 'No Houzez Property Type is assigned — assign one, or set the EB Type override in the EasyBroker box.', 'easybroker-sync' );
+			} else {
+				$errors[] = sprintf(
+					/* translators: %s: Houzez property type term name(s). */
+					__( 'Property type "%s" could not be mapped to an EasyBroker type — set the override in the EasyBroker box.', 'easybroker-sync' ),
+					implode( ', ', $names )
+				);
+			}
 		}
 		$price = (float) preg_replace( '/[^0-9.]/', '', (string) self::meta( $post_id, array( 'fave_property_price' ) ) );
 		if ( $price <= 0 ) {
-			$errors[] = __( 'Price must be greater than zero.', 'easybroker-sync' );
+			$errors[] = __( 'Price must be greater than zero — set the Sale or Rent Price in Houzez\'s Property Price section.', 'easybroker-sync' );
 		}
 		if ( '' === self::location_query( $post_id ) ) {
 			$errors[] = __( 'No location: set the EasyBroker Location in the EasyBroker box (or assign a City in Houzez).', 'easybroker-sync' );
@@ -390,7 +470,12 @@ class EBS_Houzez {
 	 * @return string
 	 */
 	public static function normalize_title( $title ) {
-		$title = remove_accents( strtolower( (string) $title ) );
+		// remove_accents() FIRST: PHP's strtolower() is byte-wise and leaves
+		// multibyte letters (Á, Ó, Ñ…) untouched, so lowercasing first makes
+		// remove_accents() emit uppercase ASCII ("MANSIÓN" → "mansiOn") which
+		// the [^a-z0-9] strip then eats — breaking matches for accented
+		// all-caps titles.
+		$title = strtolower( remove_accents( (string) $title ) );
 		return trim( preg_replace( '/[^a-z0-9]+/', ' ', $title ) );
 	}
 

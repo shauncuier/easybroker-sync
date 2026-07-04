@@ -4,7 +4,7 @@ Tags: real estate, easybroker, listings, sync, mexico
 Requires at least: 6.0
 Tested up to: 6.5
 Requires PHP: 7.4
-Stable tag: 0.4.0
+Stable tag: 0.5.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,15 @@ the property already has an EasyBroker ID it is updated (PATCH); otherwise it is
 created (POST) and the returned ID is stored.
 
 == Changelog ==
+
+= 0.5.0 =
+* Added: Spanish property type aliases (casa, departamento, terreno, etc.) for Houzez mapping, with auto-alignment to canonical spellings.
+* Added: Inline display of up to 10 validation/sync errors directly in the WordPress admin panel for bulk pushes.
+* Improved: Auto-recreation of EasyBroker properties on update when the remote listing has been deleted (HTTP 404).
+* Added: Negative caching transient for failed location lookups to avoid redundant API hits.
+* Improved: Robust API diagnostics including HTTP status in error logs, recursive array stringification to prevent imploding fatals, and raw response parsing for non-JSON content.
+* Optimized: Restrict bulk sync AJAX to only pull 'pending' status records, avoiding retrying failed posts repeatedly in the same run.
+* Improved: Include the post title alongside its ID in the sync log.
 
 = 0.4.0 =
 * Houzez theme integration.

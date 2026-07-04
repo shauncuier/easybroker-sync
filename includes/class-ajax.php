@@ -76,8 +76,17 @@ class EBS_Ajax {
 			}
 		}
 
+		// Only 'pending' posts: a post that fails flips to 'error' and is not
+		// re-selected by later batches of the same run (each post gets exactly
+		// one attempt per bulk run, instead of MAX_ATTEMPTS retries per run).
 		$push    = new EBS_Push();
-		$summary = $push->push_pending( 5 );
+		$summary = $push->push_pending( 5, 20, array( 'pending' ) );
+
+		// Stop the browser loop instead of spinning while the lock is held
+		// (e.g. a cron push is mid-run).
+		if ( ! empty( $summary['locked'] ) ) {
+			wp_send_json_error( array( 'message' => __( 'A push is already running (possibly a scheduled sync) — try again in a moment.', 'easybroker-sync' ) ) );
+		}
 
 		// Remaining = still pending and under the attempts cap.
 		$remaining_q = new WP_Query(
@@ -114,6 +123,7 @@ class EBS_Ajax {
 				'linked'    => (int) $linked,
 				'ok'        => (int) $summary['ok'],
 				'fail'      => (int) $summary['fail'],
+				'errors'    => isset( $summary['errors'] ) ? $summary['errors'] : array(),
 				'remaining' => (int) $remaining_q->found_posts,
 			)
 		);
@@ -222,6 +232,7 @@ class EBS_Ajax {
 			array(
 				/* translators: 1: success count, 2: failure count. */
 				'message' => sprintf( __( 'Pushed %1$d listing(s), %2$d error(s).', 'easybroker-sync' ), (int) $summary['ok'], (int) $summary['fail'] ),
+				'errors'  => isset( $summary['errors'] ) ? $summary['errors'] : array(),
 			)
 		);
 	}
