@@ -390,8 +390,11 @@ class EBS_Api_Client {
 	 */
 	private function cached_enum( $transient, $path ) {
 		$cached = get_transient( $transient );
-		if ( is_array( $cached ) ) {
+		if ( is_array( $cached ) && ! empty( $cached ) ) {
 			return $cached;
+		}
+		if ( ! $this->has_key() ) {
+			return array(); // Never cache "no key" as an empty enum.
 		}
 		$result = $this->get( $path );
 		if ( is_wp_error( $result ) ) {
@@ -408,7 +411,11 @@ class EBS_Api_Client {
 			}
 		}
 		$list = array_values( array_filter( $list ) );
-		set_transient( $transient, $list, DAY_IN_SECONDS );
+		// Only cache a useful result — an empty list (API glitch, empty account)
+		// would otherwise pin the UI to fallback mode for a whole day.
+		if ( ! empty( $list ) ) {
+			set_transient( $transient, $list, DAY_IN_SECONDS );
+		}
 		return $list;
 	}
 }

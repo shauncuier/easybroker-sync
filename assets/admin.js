@@ -171,6 +171,53 @@
 				} );
 		}
 
+		// EasyBroker listing picker (manual match in the property editor).
+		function runEbListingSearch() {
+			var q = $.trim( $( '#ebs-eb-filter' ).val() || '' );
+			var $status = $( '#ebs-eb-status' );
+			var $results = $( '#ebs-eb-results' ).empty();
+			$status.removeClass( 'is-ok is-error' ).text( EBS_Admin.strings.working );
+			$.post( EBS_Admin.ajaxUrl, {
+				action: 'ebs_eb_listings',
+				nonce: EBS_Admin.nonce,
+				query: q
+			} )
+				.done( function ( res ) {
+					if ( res && res.success && res.data.listings && res.data.listings.length ) {
+						$status.removeClass( 'is-error' ).addClass( 'is-ok' ).text( res.data.listings.length + ' found' );
+						$.each( res.data.listings, function ( i, item ) {
+							$( '<li/>' )
+								.append(
+									$( '<a href="#" class="ebs-eb-pick"/>' )
+										.attr( 'data-id', item.id )
+										.text( item.id + ' — ' + ( item.title || '(untitled)' ) )
+								)
+								.appendTo( $results );
+						} );
+					} else {
+						var msg = res && res.data && res.data.message ? res.data.message : 'No listings found.';
+						$status.removeClass( 'is-ok' ).addClass( 'is-error' ).text( msg );
+					}
+				} )
+				.fail( function () {
+					$status.addClass( 'is-error' ).text( EBS_Admin.strings.failed );
+				} );
+		}
+
+		$( '#ebs-eb-load' ).on( 'click', runEbListingSearch );
+		$( '#ebs-eb-filter' ).on( 'keydown', function ( e ) {
+			if ( 13 === e.which ) {
+				e.preventDefault();
+				runEbListingSearch();
+			}
+		} );
+		$( document ).on( 'click', '.ebs-eb-pick', function ( e ) {
+			e.preventDefault();
+			$( '#ebs_eb_public_id' ).val( $( this ).attr( 'data-id' ) );
+			$( '#ebs-eb-results' ).empty();
+			$( '#ebs-eb-status' ).removeClass( 'is-error' ).addClass( 'is-ok' ).text( EBS_Admin.strings.done );
+		} );
+
 		$( '#ebs-loc-search' ).on( 'click', runLocationSearch );
 		$( '#ebs-loc-query' ).on( 'keydown', function ( e ) {
 			if ( 13 === e.which ) {

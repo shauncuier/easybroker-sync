@@ -24,6 +24,61 @@ class EBS_Ajax {
 		add_action( 'wp_ajax_ebs_location_search', array( $this, 'location_search' ) );
 		add_action( 'wp_ajax_ebs_push_one', array( $this, 'push_one' ) );
 		add_action( 'wp_ajax_ebs_houzez_bulk', array( $this, 'houzez_bulk' ) );
+		add_action( 'wp_ajax_ebs_eb_listings', array( $this, 'eb_listings' ) );
+	}
+
+	/**
+	 * List EasyBroker listings (public_id + title) for the manual-match picker
+	 * in the property editor. Cached briefly so repeated filtering is cheap.
+	 */
+	public function eb_listings() {
+		if ( ! current_user_can( 'edit_posts' ) ) {
+			wp_send_json_error( array( 'message' => __( 'Insufficient permissions.', 'easybroker-sync' ) ), 403 );
+		}
+		check_ajax_referer( 'ebs_admin_action', 'nonce' );
+
+		$client = new EBS_Api_Client();
+		if ( ! $client->has_key() ) {
+			wp_send_json_error( array( 'message' => __( 'No EasyBroker API key configured.', 'easybroker-sync' ) ) );
+		}
+
+		$index = get_transient( 'ebs_eb_listing_index' );
+		if ( ! is_array( $index ) ) {
+			$list = $client->get_all( 'properties', 'content', array( 'limit' => 50 ), 300 );
+			if ( is_wp_error( $list ) ) {
+				wp_send_json_error( array( 'message' => $list->get_error_message() ) );
+			}
+			$index = array();
+			foreach ( $list as $item ) {
+				if ( ! empty( $item['public_id'] ) ) {
+					$index[] = array(
+						'id'    => (string) $item['public_id'],
+						'title' => isset( $item['title'] ) ? wp_strip_all_tags( (string) $item['title'] ) : '',
+					);
+				}
+			}
+			usort(
+				$index,
+				function ( $a, $b ) {
+					return strcasecmp( $a['title'], $b['title'] );
+				}
+			);
+			set_transient( 'ebs_eb_listing_index', $index, 5 * MINUTE_IN_SECONDS );
+		}
+
+		$query = isset( $_POST['query'] ) ? sanitize_text_field( wp_unslash( $_POST['query'] ) ) : '';
+		if ( '' !== $query ) {
+			$index = array_values(
+				array_filter(
+					$index,
+					function ( $row ) use ( $query ) {
+						return false !== stripos( $row['title'], $query ) || false !== stripos( $row['id'], $query );
+					}
+				)
+			);
+		}
+
+		wp_send_json_success( array( 'listings' => array_slice( $index, 0, 100 ) ) );
 	}
 
 	/**

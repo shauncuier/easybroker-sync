@@ -117,20 +117,77 @@ class EBS_Houzez {
 		}
 
 		$terms = get_the_terms( $post_id, 'property_type' );
-		if ( is_wp_error( $terms ) || empty( $terms ) ) {
+		if ( ! is_wp_error( $terms ) && ! empty( $terms ) ) {
+			foreach ( $terms as $term ) {
+				$name = strtolower( $term->name );
+				if ( isset( $map[ $name ] ) ) {
+					// Align to the account's canonical spelling when we know it.
+					return self::align_type( $map[ $name ], $valid_types );
+				}
+				// Exact EasyBroker name used directly as a Houzez term.
+				foreach ( $valid_types as $vt ) {
+					if ( 0 === strcasecmp( $vt, $term->name ) ) {
+						return $vt;
+					}
+				}
+			}
+		}
+
+		/**
+		 * Last resort: infer the type from title keywords ("TERRENO EN…" → Lot).
+		 * Legacy listings often carry all their data in title/description prose
+		 * with no taxonomy terms at all. Disable via the filter to require
+		 * explicit terms/overrides.
+		 *
+		 * @param bool $infer   Whether to infer from the title.
+		 * @param int  $post_id Post id.
+		 */
+		if ( apply_filters( 'ebs_houzez_infer_type_from_title', true, $post_id ) ) {
+			$inferred = self::infer_type_from_title( get_the_title( $post_id ) );
+			if ( '' !== $inferred ) {
+				return self::align_type( $inferred, $valid_types );
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Infer an EasyBroker property type from title keywords (Spanish + English).
+	 * First match wins; land keywords are checked first so titles like
+	 * "Commercial/Industrial Land" map to Lot, not Industrial Warehouse.
+	 *
+	 * @param string $title Post title.
+	 * @return string EasyBroker type, or '' when nothing matches.
+	 */
+	public static function infer_type_from_title( $title ) {
+		$title = remove_accents( (string) $title );
+		if ( '' === trim( $title ) ) {
 			return '';
 		}
-		foreach ( $terms as $term ) {
-			$name = strtolower( $term->name );
-			if ( isset( $map[ $name ] ) ) {
-				// Align to the account's canonical spelling when we know it.
-				return self::align_type( $map[ $name ], $valid_types );
-			}
-			// Exact EasyBroker name used directly as a Houzez term.
-			foreach ( $valid_types as $vt ) {
-				if ( 0 === strcasecmp( $vt, $term->name ) ) {
-					return $vt;
-				}
+
+		$patterns = array(
+			'terrenos?|\blotes?\b|\bland\b|\blots?\b|predio|hectareas?|acreage'  => 'Lot',
+			'departamentos?|\bdeptos?\b|apartment|penthouse|\bcondos?\b|estudio' => 'Apartment',
+			'\bvillas?\b'                            => 'Villa',
+			'\bcasas?\b|\bhouse\b|residenc|mansion|\bestate\b|\bhome\b'          => 'House',
+			'ranchos?|\branch\b|hacienda'            => 'Ranch',
+			'bodegas?|warehouse|industrial'          => 'Industrial Warehouse',
+			'oficinas?|\boffices?\b'                 => 'Office',
+			'local(es)?\s+comercial(es)?|\blocal\b|\bretail\b'                   => 'Retail Space',
+			'edificios?|building|hotel|resort'       => 'Building',
+		);
+
+		/**
+		 * Filter the ordered title-keyword → EasyBroker type heuristics.
+		 *
+		 * @param array $patterns regex (no delimiters) => EasyBroker type.
+		 */
+		$patterns = apply_filters( 'ebs_houzez_title_type_patterns', $patterns );
+
+		foreach ( $patterns as $pattern => $type ) {
+			if ( preg_match( '/' . $pattern . '/i', $title ) ) {
+				return $type;
 			}
 		}
 		return '';
@@ -210,6 +267,22 @@ class EBS_Houzez {
 			}
 		}
 		return strtoupper( EBS_Plugin::get_setting( 'currency', 'MXN' ) );
+	}
+
+	/**
+	 * EasyBroker operation unit for a Houzez listing: 'square_meter' when the
+	 * price prefix/postfix indicates a per-m² price (common for land leases),
+	 * else 'total'. ("per month"-style postfixes deliberately do NOT match.)
+	 *
+	 * @param int $post_id Post id.
+	 * @return string
+	 */
+	public static function price_unit( $post_id ) {
+		$hint = self::meta( $post_id, array( 'fave_property_price_postfix', 'fave_property_price_prefix' ) );
+		if ( $hint && preg_match( '/m²|\bm2\b|sq\.?\s?m\b|square\s*met(er|re)|por\s*metro|per\s*(square\s*)?meter/i', $hint ) ) {
+			return 'square_meter';
+		}
+		return 'total';
 	}
 
 	/**
@@ -386,7 +459,7 @@ class EBS_Houzez {
 					'active'   => true,
 					'amount'   => $price,
 					'currency' => self::currency( $post_id ),
-					'unit'     => 'total',
+					'unit'     => self::price_unit( $post_id ),
 				),
 			),
 			'location'      => $location,

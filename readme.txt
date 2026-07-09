@@ -4,7 +4,7 @@ Tags: real estate, easybroker, listings, sync, mexico
 Requires at least: 6.0
 Tested up to: 6.5
 Requires PHP: 7.4
-Stable tag: 0.5.0
+Stable tag: 0.6.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -66,6 +66,12 @@ the property already has an EasyBroker ID it is updated (PATCH); otherwise it is
 created (POST) and the returned ID is stored.
 
 == Changelog ==
+
+= 0.6.0 =
+* Added: last-resort property-type inference from title keywords (Spanish + English) for Houzez listings with no type term — "TERRENO…" → Lot, "CASA…" → House, "…APARTMENT" → Apartment, etc. Disable via the `ebs_houzez_infer_type_from_title` filter; customize patterns via `ebs_houzez_title_type_patterns`.
+* Added: per-m² price support — a Houzez price prefix/postfix containing "m²"/"per meter"/"por metro" now pushes the EasyBroker operation with unit `square_meter` instead of `total` ("per month" postfixes do not trigger this).
+* Added: manual matching UI — the property-type override is now a dropdown of your EasyBroker account's actual types (with a live "Auto currently matches: …" hint), and a "Match EasyBroker listing" picker lets you link a WordPress property to an existing EasyBroker listing by clicking it (filter by title or EB id).
+* Fixed: empty property-type/status enum lists are no longer cached for a day (API glitch or missing key would pin the UI to fallback mode).
 
 = 0.5.0 =
 * Added: Spanish property type aliases (casa, departamento, terreno, etc.) for Houzez mapping, with auto-alignment to canonical spellings.

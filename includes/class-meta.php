@@ -79,15 +79,23 @@ class EBS_Meta {
 			esc_html__( 'Push to EasyBroker now', 'easybroker-sync' )
 		);
 
+		$valid_types = ( new EBS_Api_Client() )->property_types();
+
 		$fields = array(
-			'eb_public_id'  => array( __( 'EasyBroker ID', 'easybroker-sync' ), __( 'Link to an existing EasyBroker listing (e.g. EB-XX1234) so pushes update it instead of creating a new one.', 'easybroker-sync' ) ),
+			'eb_public_id'  => array( __( 'EasyBroker ID', 'easybroker-sync' ), __( 'Link to an existing EasyBroker listing (e.g. EB-XX1234) so pushes update it instead of creating a new one — or pick one below.', 'easybroker-sync' ) ),
 			'location_name' => array( __( 'EasyBroker Location', 'easybroker-sync' ), __( 'Auto-resolved from City/State; set it here if the push reports a location error.', 'easybroker-sync' ) ),
-			'property_type' => array( __( 'EB Type override', 'easybroker-sync' ), __( 'e.g. House, Apartment, Villa, Lot…', 'easybroker-sync' ) ),
+			'property_type' => array( __( 'EB Type override', 'easybroker-sync' ), __( 'Overrides the automatic Houzez-type/title matching.', 'easybroker-sync' ) ),
 			'currency'      => array( __( 'Currency override', 'easybroker-sync' ), __( 'MXN or USD. Auto-detected from the price postfix.', 'easybroker-sync' ) ),
 			'agent_email'   => array( __( 'Agent Email', 'easybroker-sync' ), '' ),
 		);
 		foreach ( $fields as $key => $def ) {
 			$value = EBS_Field_Map::get( $post->ID, $key, '' );
+
+			if ( 'property_type' === $key && ! empty( $valid_types ) ) {
+				$this->render_type_select( $key, $def[0], $value, $valid_types, $this->houzez_type_hint( $post->ID, $value, $valid_types ), true );
+				continue;
+			}
+
 			printf(
 				'<p><label for="ebs_%1$s"><strong>%2$s</strong></label><br /><input type="text" id="ebs_%1$s" name="ebs_%1$s" value="%3$s" class="widefat" />%4$s</p>',
 				esc_attr( $key ),
@@ -96,6 +104,7 @@ class EBS_Meta {
 				$def[1] ? '<span class="description">' . esc_html( $def[1] ) . '</span>' : ''
 			);
 		}
+		$this->render_listing_picker();
 		?>
 		<div class="ebs-loc-lookup">
 			<label for="ebs-loc-query"><strong><?php esc_html_e( 'Location lookup', 'easybroker-sync' ); ?></strong></label>
@@ -106,6 +115,94 @@ class EBS_Meta {
 		</div>
 		<?php
 		echo '</div>';
+	}
+
+	/**
+	 * Render a property-type <select> populated with the account's EasyBroker
+	 * types, so manual matching can't introduce typos. Keeps an unknown stored
+	 * value selectable rather than silently dropping it.
+	 *
+	 * @param string $key         Bare meta key.
+	 * @param string $label       Field label.
+	 * @param string $value       Current stored value.
+	 * @param array  $valid_types EasyBroker types.
+	 * @param string $hint        Description text under the field.
+	 * @param bool   $compact     Side-box (paragraph) vs form-table markup.
+	 * @param string $empty_label Label for the empty option.
+	 */
+	private function render_type_select( $key, $label, $value, $valid_types, $hint = '', $compact = true, $empty_label = '' ) {
+		if ( '' === $empty_label ) {
+			$empty_label = __( '— Auto (match from Houzez type / title) —', 'easybroker-sync' );
+		}
+		$options = $valid_types;
+		if ( '' !== $value && ! in_array( $value, $options, true ) ) {
+			array_unshift( $options, $value ); // Preserve a legacy/custom value.
+		}
+
+		$select  = sprintf( '<select id="ebs_%1$s" name="ebs_%1$s" class="widefat">', esc_attr( $key ) );
+		$select .= '<option value="">' . esc_html( $empty_label ) . '</option>';
+		foreach ( $options as $type ) {
+			$select .= sprintf( '<option value="%1$s"%2$s>%1$s</option>', esc_attr( $type ), selected( $value, $type, false ) );
+		}
+		$select .= '</select>';
+
+		$desc = $hint ? '<span class="description">' . esc_html( $hint ) . '</span>' : '';
+
+		if ( $compact ) {
+			printf(
+				'<p><label for="ebs_%1$s"><strong>%2$s</strong></label><br />%3$s%4$s</p>',
+				esc_attr( $key ),
+				esc_html( $label ),
+				$select, // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- built with escaped parts above.
+				$desc // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+			);
+		} else {
+			printf(
+				'<tr><th scope="row"><label for="ebs_%1$s">%2$s</label></th><td>%3$s%4$s</td></tr>',
+				esc_attr( $key ),
+				esc_html( $label ),
+				$select, // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+				$desc ? '<p class="description">' . esc_html( $hint ) . '</p>' : ''
+			);
+		}
+	}
+
+	/**
+	 * Human-readable status of automatic type matching for a Houzez post,
+	 * shown under the type select so the user knows whether an override is needed.
+	 *
+	 * @param int    $post_id     Post id.
+	 * @param string $override    Current override value.
+	 * @param array  $valid_types EasyBroker types.
+	 * @return string
+	 */
+	private function houzez_type_hint( $post_id, $override, $valid_types ) {
+		if ( '' !== $override ) {
+			return __( 'Overrides the automatic Houzez-type/title matching.', 'easybroker-sync' );
+		}
+		$auto = EBS_Houzez::eb_property_type( $post_id, $valid_types );
+		if ( '' !== $auto ) {
+			/* translators: %s: EasyBroker property type. */
+			return sprintf( __( 'Auto currently matches: %s. Pick a type to override.', 'easybroker-sync' ), $auto );
+		}
+		return __( 'Auto-matching found nothing — pick a type here or the push will fail.', 'easybroker-sync' );
+	}
+
+	/**
+	 * Render the manual EasyBroker-listing picker: load/filter the account's
+	 * listings and click one to fill the EasyBroker ID field.
+	 */
+	private function render_listing_picker() {
+		?>
+		<div class="ebs-loc-lookup">
+			<label for="ebs-eb-filter"><strong><?php esc_html_e( 'Match EasyBroker listing', 'easybroker-sync' ); ?></strong></label>
+			<input type="text" id="ebs-eb-filter" class="widefat" placeholder="<?php esc_attr_e( 'Filter by title or EB id…', 'easybroker-sync' ); ?>" />
+			<button type="button" class="button" id="ebs-eb-load"><?php esc_html_e( 'Load listings', 'easybroker-sync' ); ?></button>
+			<span class="ebs-inline-result" id="ebs-eb-status"></span>
+			<ul id="ebs-eb-results" class="ebs-loc-results"></ul>
+			<p class="description"><?php esc_html_e( 'Click a listing to fill the EasyBroker ID above, so pushes update it instead of creating a duplicate. Save the post afterwards.', 'easybroker-sync' ); ?></p>
+		</div>
+		<?php
 	}
 
 	/**
@@ -216,11 +313,19 @@ class EBS_Meta {
 			);
 		}
 
+		$valid_types = ( new EBS_Api_Client() )->property_types();
+
 		echo '<table class="form-table" role="presentation"><tbody>';
 		foreach ( $fields as $key => $def ) {
 			$label = $def[0];
 			$hint  = isset( $def[1] ) ? $def[1] : '';
 			$value = EBS_Field_Map::get( $post->ID, $key, '' );
+
+			if ( 'property_type' === $key && ! empty( $valid_types ) && ! $is_collab ) {
+				$this->render_type_select( $key, $label, $value, $valid_types, __( 'Pick from your EasyBroker account\'s types.', 'easybroker-sync' ), false, __( '— Select a type (required) —', 'easybroker-sync' ) );
+				continue;
+			}
+
 			printf(
 				'<tr><th scope="row"><label for="ebs_%1$s">%2$s</label></th><td><input type="text" id="ebs_%1$s" name="ebs_%1$s" value="%3$s" class="regular-text" %4$s />%5$s</td></tr>',
 				esc_attr( $key ),

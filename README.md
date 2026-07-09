@@ -47,6 +47,12 @@ Cross-post WordPress property listings to [EasyBroker](https://www.easybroker.co
 
 ## 📝 Changelog
 
+### 0.6.0
+- Last-resort property-type inference from title keywords (Spanish + English) for Houzez listings with no type term — "TERRENO…" → Lot, "CASA…" → House, "…APARTMENT" → Apartment, etc. Disable via the `ebs_houzez_infer_type_from_title` filter; customize patterns via `ebs_houzez_title_type_patterns`
+- Per-m² price support — a Houzez price prefix/postfix containing "m²"/"per meter"/"por metro" now pushes the EasyBroker operation with unit `square_meter` instead of `total`
+- Manual matching UI — the property-type override is now a dropdown of your EasyBroker account's actual types (with a live "Auto currently matches: …" hint), and a "Match EasyBroker listing" picker lets you link a WordPress property to an existing EasyBroker listing by clicking it (filter by title or EB id)
+- Empty property-type/status enum lists are no longer cached for a day (API glitch or missing key would pin the UI to fallback mode)
+
 ### 0.5.0
 - Spanish property type aliases (casa, departamento, terreno, etc.) for Houzez mapping, with auto-alignment to canonical spellings
 - Inline display of up to 10 validation/sync errors directly in the WordPress admin panel for bulk pushes
